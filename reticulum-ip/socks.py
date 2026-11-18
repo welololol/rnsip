@@ -1,7 +1,7 @@
 import RNS
-import threading
 import socket
 import struct
+import threading
 
 class SocksProxyServer:
 
@@ -12,30 +12,33 @@ class SocksProxyServer:
 
     def listener(self):
         with socket.socket() as listening_sock:
+            ## allows for quick rebinding
+            listening_sock.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1) 
             listening_sock.bind(('', 1080))
             listening_sock.listen()
             RNS.log(f"listening on localhost:{1080}")
             while True:
                 client_soc, client_address = listening_sock.accept()
                 # Send each "client_soc" connection as a parameter to a thread.
-                threading.Thread(target=self.connection, args=(client_soc, client_address), daemon=True).start()         
+                threading.Thread(target=self.connection, args=(client_soc, self.client), daemon=True).start()         
         
     def connection(self, con, client):
-        print(con, client)
+        # print(con, client)
         initial_request = struct.unpack("!BB", con.recv(2));
         version = initial_request[0]
         hdr = initial_request[1];
 
         # we do need this print btw.
+        # 
         print(con.recv(hdr)) # we ignore all methods for initiation cause we just accept it caues it's localhost
 
         con.sendall(bytes([0x05, 0x00])) ## version number + we don't auth you don't have to send anything
 
         # after faking the auth process, we just forward everything else to the remote reticulum server
 
-        client.client_link.new_connection()
+        client.client_link.new_connection(con)
 
-        
+        return
 
         
         request_details = struct.unpack("!BBBB", con.recv(4)) ## reply on what the client what's to do
