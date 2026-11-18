@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "reticulum-ip"
+description = "A proxy layer between ip and reticulum"
+readme = "README.md"
+license = "Unlicense"
+license-files = ["LICENSE"]
+requires-python = ">=3.11"
+dynamic = ["version"]
+dependencies = [
+    "rns>=1.5",
+    # "asyncio-socks-server>1.3.3"
+]
+classifiers = [
+    # "Programming Language :: Python :: 3",
+    # "Operating System :: OS Independent",
+    # "Topic :: Communications :: Conferencing",
+]
+
+[project.optional-dependencies]
+hotkeys = ["pynput"]
+
+[project.scripts]
+partyline = "partyline.gui:main"
+partyline-server = "partyline.server:main"
+partyline-client = "partyline.client:main"
+
+# [project.urls]
+# Homepage = "https://github.com/RFnexus/partyline"
+
+# [tool.setuptools]
+# packages = ["partyline", "partyline.bots"]
+
+# [tool.setuptools.package-dir]
+# "partyline.bots" = "bots"
+
+# [tool.setuptools.package-data]
+# partyline = ["icons/*.png", "icons/LICENSE", "sounds/*.wav", "sounds/LICENSE", "partyline.png", "locale/*.pot", "locale/*.po", "locale/*/LC_MESSAGES/*.mo"]
+
+# [tool.setuptools.dynamic]
+# version = {attr = "partyline.common.APP_VERSION"}
+
+[tool.black]
+line-length = 120
+
