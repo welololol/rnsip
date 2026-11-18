@@ -14,7 +14,7 @@ class SocksProxyServer:
         with socket.socket() as listening_sock:
             ## allows for quick rebinding
             listening_sock.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1) 
-            listening_sock.bind(('', 1080))
+            listening_sock.bind(("127.0.0.1", 1080))
             listening_sock.listen()
             RNS.log(f"listening on localhost:{1080}")
             while True:
@@ -30,11 +30,14 @@ class SocksProxyServer:
 
         # we do need this print btw.
         # 
-        print(con.recv(hdr)) # we ignore all methods for initiation cause we just accept it caues it's localhost
+        # print(con.recv(hdr), "hdr") # we ignore all methods for initiation cause we just accept it caues it's localhost
+        methods = con.recv(hdr)
+        print("next", methods)
 
         con.sendall(bytes([0x05, 0x00])) ## version number + we don't auth you don't have to send anything
 
-        # after faking the auth process, we just forward everything else to the remote reticulum server
+        print("sent")
+        # after faking the auth process, we just start making a connection
 
         client.client_link.new_connection(con)
 

@@ -8,6 +8,7 @@ import discovery
 import socks
 import client
 import server
+import forward
 # import asyncio_socks_server
 
 
@@ -68,6 +69,8 @@ def main():
     elif args.subcommand == "client":
         client_connection = client.Client(convert_str_to_destination(args.destination))
         socks.SocksProxyServer(client_connection)
+        forward.TCPPortForward(client_connection, "127.0.0.1", 25565, "127.0.0.1", 25565)
+
     elif args.subcommand == "discovery":
         print("discovering i guess");
 
