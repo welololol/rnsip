@@ -46,7 +46,10 @@ class ReticulumBufferWrapper: # Utility class because the reticulum callback thi
         # return self.buffer.read1(len_data)
 
     def write(self, data):
+        l = len(data)
         a = self.buffer.write(data)
+        if a != l:
+            print(f"MISMATCH {l} {a}")
         self.buffer.flush()
 
     def flush(self):
@@ -54,48 +57,176 @@ class ReticulumBufferWrapper: # Utility class because the reticulum callback thi
 
 
 class ConnectionType:
-    # Takes buffer stream, and gives connection
-    #
-    # allows passing a read and write function so we can pass this to a buffer or a socket transparently
-    # 
-    def __init__(self, cmd, atyp, host, port):
+    # host:port and then udp/tcp pair.
+    # host can be anythign in the host type
+    def __init__(self, cmd, host, port):
         self.cmd = cmd
-        self.atyp = atyp
         self.host = host
         self.port = port
 
     @classmethod
-    def read_buf(cls, read_func):
-        connection_response = struct.unpack("!BBxB",read_func(4));
+    def read_buf(cls, read_func, cannonise=False):
+        b = read_func(3);
+        print(len(b),b)
+        connection_response = struct.unpack("!BBx",b);
         version = connection_response[0] ## we don't really bother too much checking this.
         cmd = connection_response[1]
-        atyp = connection_response[2]
+
+        print(version, cmd)
+
+
+        host = HostType.read_buf(read_func, cannonise=cannonise)        
+
+        port = struct.unpack("!H", read_func(2))[0];
+        print(f"Connection info: {version},{cmd},{host.atyp},{host.hostname}:{port}")
+        return cls(cmd,host,port)
+
+    @classmethod
+    def from_str_and_type(cls, string, cmd):
+        tuple = string.split(":")
+        if len(tuple) == 1: ## user just put in a port, so we assume they mean localhost
+            port = tuple[0]
+            host = "127.0.0.1"
+        else:
+            host = tuple[0]
+            port = tuple[1]
+            
+        port = int(port)
+        
+        return cls(cmd, HostType.from_str(host), port)
+
+    def write(self):
+        b = bytearray([])
+        print(f"cmd: {self.cmd}, port: {self.port}, host: {self.host}")
+        
+        b.extend(struct.pack("!BBxB",SOCKS_VERSION, self.cmd,self.host.atyp))
+        b.extend(self.host.write())
+
+        b.extend(struct.pack("!H",self.port))
+        return b
+
+    def __str__(self):
+        if self.cmd == CMD_CONNECT:
+            return f"{self.host.hostname}:{self.port} TCP"
+        else:
+            return f"{self.host.hostname}:{self.port} UDP"
+
+class HostType:
+    def __init__(self, atyp, hostname):
+        self.atyp = atyp
+        self.hostname = hostname # a string btw
+
+    @classmethod
+    def read_buf(cls, read_func, cannonise=False):
+        connection_response = struct.unpack("!B",read_func(1));
+        atyp = connection_response[0]
 
         if atyp == ATYP_IPV4: ## ipv4 host
-            host = socket.inet_ntoa(read_func(4))
+            hostname = socket.inet_ntoa(read_func(4))
         elif atyp == ATYP_DOMAINNAME: ## hostname host
             host_size = struct.unpack("!B",read_func(1))[0];
             data = read_func(host_size)
-            host = data.decode("utf-8");
+            hostname = data.decode("utf-8");
         elif atyp == ATYP_IPV6: # ipv6 host
-            host = socket.inet_ntop(socket.AF_INET6, read_func(16))
+            hostname = socket.inet_ntop(socket.AF_INET6, read_func(16))
         else:
-            print("ERROR")
+            print(f"ERROR given type {atyp}")
+            while True:
+                print(read_func(1))
         
-        port = struct.unpack("!H", read_func(2))[0];
-        print(f"Connection info: {version},{cmd},{atyp},{host}:{port}")
-        return cls(cmd,atyp,host,port)
+        return cls(atyp,hostname)
 
+    @classmethod
+    def from_str(cls, host):
+        return cls(ATYP_DOMAINNAME, host)
 
-    def write(self, write_func):
-        write_func(struct.pack("!BBxB",SOCKS_VERSION, self.cmd,self.atyp))
-        print("write")
+    def __str__(self):
+        return self.hostname
+
+    def write(self):
+        b = bytearray([])
         if self.atyp == ATYP_DOMAINNAME:
-            write_func(struct.pack("!B",len(self.host)))
-            write_func(self.host.encode("utf-8"))
+            b.extend(struct.pack("!B",len(self.hostname)))
+            b.extend(self.hostname.encode("utf-8"))
         else:
-            pass
+           print("write function not working")
+        return b
 
-        write_func(struct.pack("!H",self.port))
+class BufferTcpExchange():
+    def read_from_reticulum_side(self):
+        while True:
+            data = self.wrapped_buffer.read(DEFAULT_PACKET_SIZE);
+            try:
+                self.socket.sendall(data)
+            except Exception as exception:
+                # print(exception)
+                break
+        self.drop_from_internal()
+
+    def write_to_reticulum_side(self):
+        while True:
+            try:
+                data = self.socket.recv(DEFAULT_PACKET_SIZE);
+                if len(data) == 0:
+                    break
+                else:
+                    self.wrapped_buffer.write(data);
+            except Exception as exception:
+                # print(exception)
+                break
+
+        self.drop_from_internal()
+
+    # if the other side told us to close
+    def drop_from_external(self):
+        pass
+
+    # if we are closing it
+    def drop_from_internal(self):
+        self.socket.close()
+        # pass
+    
 
 
+    def __init__(self, wrapped_buffer, socket):
+        self.socket = socket
+        self.wrapped_buffer = wrapped_buffer;
+        # print(socket.recv(100))
+        threading.Thread(target=self.read_from_reticulum_side,args = (), daemon=True).start();
+        threading.Thread(target=self.write_to_reticulum_side,args = (), daemon=True).start();
+
+def convert_str_to_destination(destination_hexhash):
+    try:
+        dest_len = (RNS.Reticulum.TRUNCATED_HASHLENGTH//8)*2
+        if len(destination_hexhash) != dest_len:
+            raise ValueError(
+                "Destination length is invalid, must be {hex} hexadecimal characters ({byte} bytes).".format(hex=dest_len, byte=dest_len//2)
+            )
+        des_bytes = bytes.fromhex(destination_hexhash)
+
+        if not RNS.Transport.has_path(des_bytes):
+            print("requesting path")
+            RNS.Transport.request_path(des_bytes)
+            RNS.Transport.await_path(des_bytes)
+            
+
+        
+        server_identity = RNS.Identity.recall(des_bytes)
+        print(f"server identity {server_identity}")
+        return RNS.Destination(server_identity, RNS.Destination.OUT, RNS.Destination.SINGLE, "ip", "socksv5");
+
+    except Exception as e:
+        RNS.log("Invalid destination entered. Check your input!")
+        RNS.log(str(e)+"\n")
+
+
+
+def read_exact_from_socket(socket, n):
+    buff = bytearray(n)
+    pos = 0
+    while pos < n:
+        cr = socket.recv_into(memoryview(buff)[pos:])
+        if cr == 0:
+            raise EOFError
+        pos += cr
+    return buff

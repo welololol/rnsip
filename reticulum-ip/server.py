@@ -11,9 +11,10 @@ from const import *
 
 class Server: # only one instance of this exists
 
-    def __init__(self, identity):
-        destination = RNS.Destination(identity, RNS.Destination.IN, RNS.Destination.SINGLE, "ip", "socksv5");
+    def __init__(self, server):
+        destination = RNS.Destination(server._identity_bytes, RNS.Destination.IN, RNS.Destination.SINGLE, "ip", "socksv5");
         destination.accepts_links(accepts=True)
+        print(f"Destination: {RNS.prettyhexrep(destination.hash)}")
 
         destination.announce(app_data=b"blahblha" );
         destination.set_link_established_callback(self.new_connection);
@@ -37,41 +38,28 @@ class ServerLink: # This is per client connection
         self.link.teardown();
 
     def new_connection(self, buffer_id):
-        return Connection(buffer_id, self.channel) 
+        self.buffers[buffer_id] = Connection(buffer_id, self.channel) 
 
-
-
-    def tear_down_buffer(self,id):
+    def close_connection(self,id):
         pass
+        
 
 
 class Connection: ## an individual tcp or udp connection (not really udp but that'll be insideo f this)
     def __init__(self, buffer_id, channel):
         self.buffer = ReticulumBufferWrapper(channel, buffer_id);
+        print(buffer_id, f"buffer start: {buffer_id}")
         connection_type = ConnectionType.read_buf(self.buffer.read_exact)
+        print(buffer_id, f"buffer end: {buffer_id}")
         
         self.remote_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.remote_socket.connect((connection_type.host,connection_type.port))
+        self.remote_socket.connect((connection_type.host.hostname,connection_type.port))
 
         self.buffer.write(bytes([REP_SUCCEEDED]));
 
-        threading.Thread(target=self.read_from_reticulum_side,args = (), daemon=True).start();
-        threading.Thread(target=self.write_to_reticulum_side,args = (), daemon=True).start();
+        BufferTcpExchange(self.buffer, self.remote_socket)
         
 
-    def read_from_reticulum_side(self):
-        while True:
-            data = self.buffer.read(1000);
-            try:
-                self.remote_socket.sendall(data)
-            except Exception:
-                pass
-
-    def write_to_reticulum_side(self):
-        while True:
-            data = self.remote_socket.recv(1000);
-            if len(data) > 0:
-                self.buffer.write(data);
 
     def get_connection_type():
         pass
@@ -109,9 +97,11 @@ class MasterBufferServer:
             cmd = struct.unpack("!B", buffer.read_exact(1))[0];
             if cmd == 0x03:
                 connection_id = struct.unpack("!I", buffer.read_exact(4))[0]; 
+                print(f"new connection {connection_id}")
                 threading.Thread(target=self.server_link.new_connection,args = (connection_id,), daemon=True).start();
             elif cmd == 0x04:
                 connection_id = struct.unpack("!I", buffer.read_exact(4))[0]; 
+                print(f"new connection2 {connection_id}")
                 threading.Thread(target=self.server_link.end_connection,args = (connection_id,), daemon=True).start();
             else:
                 pass

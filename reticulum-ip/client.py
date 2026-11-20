@@ -7,8 +7,9 @@ from utility import *
 from const import *
 
 class Client:
-    def __init__(self, destination):
-        RNS.Link(destination, established_callback=self.new_link)
+    def __init__(self, settings):
+        destination_bytes = convert_str_to_destination(settings.destination)
+        RNS.Link(destination_bytes, established_callback=self.new_link)
 
     def new_link(self, link):
         self.client_link = ClientLink(link)
@@ -23,12 +24,21 @@ class ClientLink:
         self.master_buffer = MasterBufferClient(self, self.channel)
 
     def new_connection(self, tcp_socket_connection, connection_type=None):
-        self.id_rolling += 1
-        self.master_buffer.new_connection(self.id_rolling);
+        # techincally two connections could happen at once and overwrite the id but I'm not worried bout that rn
+        id = self.id_rolling + 1
+        self.id_rolling = id;
 
-        buffer = ReticulumBufferWrapper(self.channel, self.id_rolling)
-        self.buffers[self.id_rolling] = SocksClientConnection(tcp_socket_connection, buffer, connection_type=connection_type)
+        buffer = ReticulumBufferWrapper(self.channel, id)
+        # time.sleep(0.01)
+        self.master_buffer.new_connection(id);
+
+        print(f"making buffer {id} (remove delay at some point)")
+        time.sleep(0.01)
+        self.buffers[id] = SocksClientConnection(tcp_socket_connection, buffer, connection_type=connection_type)
         
+    def close(self, id):
+        self.master_buffer.new_connection(id);
+
 
 class MasterBufferClient:
 
@@ -68,57 +78,51 @@ class MasterBufferClient:
     def new_connection(self, id):
         new_connection = struct.pack("!BI", NEW_BUFFER, id); 
         self.buffer.write(new_connection)
+        self.buffer.flush()
+
+    def close_connection(self, id):
+        new_connection = struct.pack("!BI", END_BUFFER, id); 
+        self.buffer.write(new_connection)
+        self.buffer.flush()
 
 class SocksClientConnection:
-
-    def read_from_reticulum_side(self):
-        while True:
-            data = self.buffer.read(1000);
-            try:
-                self.tcp_socket.sendall(data)
-            except Exception:
-                print("brokey")
-
-    def write_to_reticulum_side(self):
-        while True:
-            data = self.tcp_socket.recv(1000);
-            if len(data) > 0:
-                self.buffer.write(data);
-
     def handshake(self, connection_type=None):
+        print("new")
         if connection_type == None:
-            connection_type = ConnectionType.read_buf(self.tcp_socket.recv)
+            def recv_wrapped(len_data):
+                return read_exact_from_socket(self.tcp_socket,len_data)
+
+            connection_type = ConnectionType.read_buf(recv_wrapped)
             generated_connection = None;
         else:
             generated_connection = True;
             print("no connection type by default")
 
-        connection_type.write(self.buffer.write)
+        print(f"Connection {str(connection_type)}")
+
+        self.buffer.write(connection_type.write())
         
         # the server then only replies with if the command is succesful given by the standard
         # however it doesn't reply with the destination port or whatever cause it's irrevalant for the most part
         # so we instead just fake it back to the client
 
-        server_response = struct.unpack("!B", self.buffer.read_exact(1))
+        server_response = struct.unpack("!B", self.buffer.read_exact(1))[0]
         if server_response != REP_SUCCEEDED:
-            print("succeed")
+            print(f"not actually succeed hold up {server_response}")
 
         if generated_connection == None:
             self.tcp_socket.sendall(bytes([SOCKS_VERSION, REP_SUCCEEDED, 0x00, ATYP_IPV4, 0,0,0,0, 0,0]))
-
-        print("everything is good!")
         # gives some bogus response equivalent to "yea we gonna sent all your traffic to 0.0.0.0:0,
         # don't worry about it the operation was successful. trust me bro.
 
-        threading.Thread(target=self.read_from_reticulum_side,args = (), daemon=True).start();
-        threading.Thread(target=self.write_to_reticulum_side,args = (), daemon=True).start();
+        BufferTcpExchange(self.buffer, self.tcp_socket)
 
     def flush_initial(self):
         # occasionally we will send data to the remote buffer
         # before it has actually initialised, which causes problems
         # so we just keep flushing the bytes till it works out
         for i in range(1,25):
-            # pass
+            self.buffer.flush();
             time.sleep(0.01)
             self.buffer.flush();
 

@@ -9,84 +9,102 @@ import socks
 import client
 import server
 import forward
+from settings import *
 # import asyncio_socks_server
 
 
-def convert_str_to_destination(destination_hexhash):
-    try:
-        dest_len = (RNS.Reticulum.TRUNCATED_HASHLENGTH//8)*2
-        if len(destination_hexhash) != dest_len:
-            raise ValueError(
-                "Destination length is invalid, must be {hex} hexadecimal characters ({byte} bytes).".format(hex=dest_len, byte=dest_len//2)
-            )
-        des_bytes = bytes.fromhex(destination_hexhash)
-
-        if not RNS.Transport.has_path(des_bytes):
-            print("requesting path")
-            RNS.Transport.request_path(des_bytes)
-            RNS.Transport.await_path(des_bytes)
-            
-
-        
-        server_identity = RNS.Identity.recall(des_bytes)
-        print(f"server identity {server_identity}")
-        return RNS.Destination(server_identity, RNS.Destination.OUT, RNS.Destination.SINGLE, "ip", "socksv5");
-
-    except Exception as e:
-        RNS.log("Invalid destination entered. Check your input!")
-        RNS.log(str(e)+"\n")
 
 def main():
+    # commmands: (in all these caess, hostname can be an ipv4 or ipv6 address as well and defaults to localhost when not included)
+    # 
+    # --configdir --identity --background_discovery
+    # 
+    # server
+    #
+    # --name --description --nomadnet --lxmf  --password
+    # 
+    # socks: (--allow-private, --allow-localhost, --allow-udp, --allow-tcp, --allow-bind --upspeed, --downspeed --description),
+    # forward ([hostname:]port --upspeed --downspeed --description)
+    # 
+    # client 1:destination: --password
+    # socks (--destination [hostname:]port))
+    # connect (--local [hostname:]port --remote [hostname:]port)
+    # 
+    # discovery:
+    # continous (--silent)
+    # display (--json)
+    # 
     parser = argparse.ArgumentParser(description="A reticulum ip proxy")
-    # parser.add_argument("command", choices=["client","server","discovery"])
     parser.add_argument("--configdir", default=None, help="Reticulum config directory (default ~/.reticulum)")
     parser.add_argument("--identity", default=None, help="reticulum identity")
 
     subparsers = parser.add_subparsers(dest='subcommand')
 
     parser_server = subparsers.add_parser("server")
+    parser_server.add_argument("--name");
+    parser_server.add_argument("--lxmf");
+    parser_server.add_argument("--nomadnet");
+    parser_server.add_argument("--description");
+    parser_server.add_argument("--password");
 
     parser_client = subparsers.add_parser("client")
     parser_client.add_argument("destination");
-    
 
-    args = parser.parse_args()
-    print(args)
+    parser_discovery = subparsers.add_parser("discovery")
+    parser_discovery.add_argument("idk");
 
-    rns = RNS.Reticulum(configdir=args.configdir);
+    namespace ,extra_args = parser.parse_known_args();
+    subcommand = namespace.subcommand; 
 
-    if args.identity != None:
-        print("given identity")
-        if os.path.isfile(args.identity):
-            identity = RNS.Identity.from_file(args.identity)
-            if identity is None:
-                raise SystemExit(f"could not read identity file {args.identity}")
-    else:
-        identity = RNS.Identity();
-
-    if args.subcommand == "server":
-        server.Server(identity);
-    elif args.subcommand == "client":
-        client_connection = client.Client(convert_str_to_destination(args.destination))
-        socks.SocksProxyServer(client_connection)
-        forward.TCPPortForward(client_connection, "127.0.0.1", 25565, "127.0.0.1", 25565)
-
-    elif args.subcommand == "discovery":
-        print("discovering i guess");
+    print(namespace, extra_args, subcommand)
+    rns = RNS.Reticulum(configdir=namespace.configdir);
 
 
 
-    print(f"identity hash: {identity.hash.hex()}")
+    if subcommand == "client":
+        settings = ClientSettings.parse_args(namespace, extra_args)
+        client_connection = client.Client(settings)
+        print("connection")
+        for option in settings.options:
+            print("option", option)
+            if isinstance(option, ForwardOptionClient):
+                print("forward")
+                forward_connection = forward.TCPPortForward(option, client_connection)
+            elif isinstance(option, SocksOptionClient):
+                print("socks")
+                socks.SocksProxyLocal(option, client_connection)
+            else:
+                print("done?")
+    elif subcommand == "server":
+        settings = ServerSettings.parse_args(namespace,extra_args)
+        server_runner = server.Server(settings)
 
-    discovery.discover(rns)
 
-    time.sleep(1);
+
+
+
+    # if args.subcommand == "server":
+    #     server.Server(identity);
+    # elif args.subcommand == "client":
+    #     client_connection = client.Client(convert_str_to_destination(args.destination))
+    #     socks.SocksProxyServer(client_connection)
+    #     forward.TCPPortForward(client_connection, "127.0.0.1", 25565, "127.0.0.1", 25565)
+    # elif args.subcommand == "discovery":
+    #     print("discovering i guess");
+
+
+
+    # print(f"identity hash: {identity.hash.hex()}")
+
+    # discovery.discover(rns)
+
+    # time.sleep(1);
 
         
     while True:
         time.sleep(1);
         
-    
+
 
 if __name__ == "__main__":
     main()

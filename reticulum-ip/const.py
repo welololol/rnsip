@@ -1,5 +1,6 @@
 ## SOCKS 
 
+# We also use CMD_CONNECT and CMD_UDP_ASSOCIATE to denote if a connection is tcp or udp.
 CMD_CONNECT = 0x01
 CMD_BIND = 0x02
 CMD_UDP_ASSOCIATE = 0x03
@@ -21,3 +22,13 @@ NEW_BUFFER = 0x03
 END_BUFFER = 0x04
 
 # ANNOUNCEMENT 
+
+ANN_CONNTACT = 0x00
+ANN_SOCKSV5 = 0x01
+ANN_FORWARDED = 0x02
+
+
+## OTHER
+
+
+DEFAULT_PACKET_SIZE = 8096 # reasonable compormise between python overhead and not having an given tcp stream get starved
