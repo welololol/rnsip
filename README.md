@@ -52,8 +52,6 @@ Not currently implemented, but rarely used by socksv5 applications anyways. Will
 
 On client side, the virtual sockv5 server returns back a udp socket on localhost, which is then forwarded raw through a link interface as denoted below. The udp socket is open till the client tears down this buffer, which then.
 
-
-
 ## Wire Format
 
 All data for reticulum-ip goes through a channel (as defined in the reticulum api) after a connection intilation which we will then multiplex all the sockv5 data through, note this is slightly worse performance and latency that rolling our own reliable transport ontop of a link, but given the bandwidth and latency of the reticulum network this isn't a massive issue.
@@ -63,14 +61,27 @@ if you wish to know more, I recommend you read the socksv5 spec as it's not a lo
 
 ## Announcement Format.
 
-the app name used is *ip.socksv5*, destination format (using https://msgpack.org/
+the app name used is *ip.socksv5*,
 
-appdata = Name:bstr Description:bstr|None, UpSpeed:int, DownSpeed:int, {Contact | Socksv5 | Forwarded}
+I using https://msgpack.org/ was considered (which is the standard for rnsd, nomadnet and mainline applications like partyline) however we already minpulate raw byte streams so it's easier to just work with that and python's built in struct.pack method, not to mention that for announcements we only have 465 bytes to work with and have to send everything about the server plus potential strings the user includes and we wanna be network efficient if we can help it.
 
-Contact = 0 (number represents type), LXMF_IDENTITY:bstr|None NOMANDET_IDENTITY:bstr|None {OPTIONAL ADDITIONAL DATA}
-Socksv5: 1, {UpSpeed, DownSpeed, Flags (allow private, allow public, passworded, more undefined, allow udp, allow bind)}
 
-Forwarded: 2, {Port, Type udp|tcp Hostname|None if local, description:str}
+appdata = Name:str Description:str, UpSpeed:int, DownSpeed:int, {Contact | Socksv5 | Forwarded}, 
+
+lower 0x80 is used for actual configuration.
+
+Socksv5: 0x01, {UpSpeed, DownSpeed, Flags (allow private, allow public, passworded, more undefined, allow udp, allow bind)}
+Forwarded: 0x02, {Flags (udp, tcp, ipv4|ipv6|hostname|none), binary of ipv4,ipv6,hostname or none for local, port, description:str}(don't implement that the none functionality for now)
+
+upper 0x80 is used for contact and additional data.
+
+Lxmf 0x80: {LXMF Destination , string}
+Nomadnet 0x81: {NOMADNET Destination , string}
+Other Destination 0x82: {Reticulum Destination , string} 
+
+All destinations are stored in 16 bytes.
+
+note that every single in here is a pascal stirng meanign that they are limited to 256 bytes. 
 
 In each "silo (or whatever I should call them)", there can be optional data
 
@@ -83,8 +94,6 @@ Note that reticulum's max announcement app_data size is 465 bytes or 465 charact
 - Minimialising network traffic/overhead
 - Performance
 - Extensibility.
-
-
 
 In that order
 
