@@ -11,13 +11,26 @@ from const import *
 
 class Server: # only one instance of this exists
 
-    def __init__(self, server):
-        destination = RNS.Destination(server._identity_bytes, RNS.Destination.IN, RNS.Destination.SINGLE, "ip", "socksv5");
+    def __init__(self, settings):
+        self.settings = settings
+        destination = RNS.Destination(settings._identity_bytes, RNS.Destination.IN, RNS.Destination.SINGLE, "ip", "socksv5");
         destination.accepts_links(accepts=True)
+        self.destination = destination
         print(f"Destination: {RNS.prettyhexrep(destination.hash)}")
 
-        destination.announce(app_data=b"blahblha" );
+        threading.Thread(target=self.announcement_loop,args = (), daemon=True).start();
+
         destination.set_link_established_callback(self.new_connection);
+
+    def announcement_loop(self):
+        settings_bytes = self.settings.to_bytes()
+        while True:
+            print("Sent out announcement")
+            self.destination.announce(app_data=settings_bytes);
+            time.sleep(self.settings._announcement_rate * 60)
+
+
+        pass
 
     def new_connection(self, link):
         self.latest_server_link = ServerLink(self, link) # stupid variable

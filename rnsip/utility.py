@@ -230,3 +230,9 @@ def read_exact_from_socket(socket, n):
             raise EOFError
         pos += cr
     return buff
+
+# don't wanna require python 3.15 yet so we just manually make the function which might be slow i guess but it's fine.
+def take_bytes(buffer, n):
+    data = bytes(buffer[:n + 1])
+    del buffer[:n + 1]
+    return data

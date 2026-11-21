@@ -46,6 +46,7 @@ def main():
     parser_server.add_argument("--nomadnet");
     parser_server.add_argument("--description");
     parser_server.add_argument("--password");
+    parser_server.add_argument("--announcement_rate");
 
     parser_client = subparsers.add_parser("client")
     parser_client.add_argument("destination");
@@ -77,35 +78,29 @@ def main():
                 print("done?")
     elif subcommand == "server":
         settings = ServerSettings.parse_args(namespace,extra_args)
+        print("parsed settings")
+        print(settings.print("me"))
+        set = settings.to_bytes()
+        set.extend(bytearray([0x00]))
+        print(set)
+
+        def read_buffer(n):
+            data = bytes(set[:n])
+            del set[:n]        
+            return data
+
+        new_settings = settings.from_bytes(read_buffer)
+        new_settings.print("other me")
         server_runner = server.Server(settings)
-
-
-
-
-
-    # if args.subcommand == "server":
-    #     server.Server(identity);
-    # elif args.subcommand == "client":
-    #     client_connection = client.Client(convert_str_to_destination(args.destination))
-    #     socks.SocksProxyServer(client_connection)
-    #     forward.TCPPortForward(client_connection, "127.0.0.1", 25565, "127.0.0.1", 25565)
-    # elif args.subcommand == "discovery":
-    #     print("discovering i guess");
-
-
+        print("server now running")
+    else:
+        print("INVALID COMMAND")
 
     # print(f"identity hash: {identity.hash.hex()}")
-
-    # discovery.discover(rns)
-
-    # time.sleep(1);
-
-        
+       
     while True:
         time.sleep(1);
         
-
-
 if __name__ == "__main__":
     main()
 
