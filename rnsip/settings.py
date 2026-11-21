@@ -132,7 +132,6 @@ class ServerSettings:
         # I seriously need better variable names look at this
         cls.options = []
         while True:
-            time.sleep(0.1)
             option_type = struct.unpack("B", read_func(1))[0]
             print(option_type)
             if option_type == 0x00:

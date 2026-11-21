@@ -18,8 +18,8 @@ SOCKS_VERSION = 0x05
 
 AUTH_PASS = 0x01
 ACCEPT_AND_ANNC = 0x02
-NEW_BUFFER = 0x03
-END_BUFFER = 0x04
+NEW_CONNECTION = 0x03
+END_CONNECTION = 0x04
 
 # ANNOUNCEMENT 
 
@@ -46,3 +46,5 @@ DEFAULT_PACKET_SIZE = 8096 # reasonable compormise between python overhead and n
 
 # in minutes
 DEFAULT_ANNOUNCEMENT_RATE = 90 
+
+DEFAULT_CONNECTION_BUFFER = 1000 # the amoutn of connections we are listening to just in case

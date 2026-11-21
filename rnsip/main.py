@@ -37,6 +37,7 @@ def main():
     parser = argparse.ArgumentParser(description="A reticulum ip proxy")
     parser.add_argument("--configdir", default=None, help="Reticulum config directory (default ~/.reticulum)")
     parser.add_argument("--identity", default=None, help="reticulum identity")
+    parser.add_argument("--debug_level", default=3, help="reticulum identity")
 
     subparsers = parser.add_subparsers(dest='subcommand')
 
@@ -58,7 +59,7 @@ def main():
     subcommand = namespace.subcommand; 
 
     print(namespace, extra_args, subcommand)
-    rns = RNS.Reticulum(configdir=namespace.configdir);
+    rns = RNS.Reticulum(configdir=namespace.configdir, loglevel=int(namespace.debug_level));
 
 
 

@@ -67,18 +67,14 @@ class ConnectionType:
     @classmethod
     def read_buf(cls, read_func, cannonise=False):
         b = read_func(3);
-        print(len(b),b)
         connection_response = struct.unpack("!BBx",b);
         version = connection_response[0] ## we don't really bother too much checking this.
         cmd = connection_response[1]
 
-        print(version, cmd)
-
-
         host = HostType.read_buf(read_func, cannonise=cannonise)        
 
         port = struct.unpack("!H", read_func(2))[0];
-        print(f"Connection info: {version},{cmd},{host.atyp},{host.hostname}:{port}")
+        # print(f"Connection info: {version},{cmd},{host.atyp},{host.hostname}:{port}")
         return cls(cmd,host,port)
 
     @classmethod
@@ -156,44 +152,57 @@ class BufferTcpExchange():
     def read_from_reticulum_side(self):
         while True:
             data = self.wrapped_buffer.read(DEFAULT_PACKET_SIZE);
+            if len(data) == 0:
+                print("shit is hitting the fan a little")
+                break
             try:
                 self.socket.sendall(data)
-            except Exception as exception:
-                # print(exception)
+            except OSError: #if we can't send to socket, it's cooked then return.
+                self.teardown_otherside()
                 break
-        self.drop_from_internal()
+        self.teardown_socket()
 
     def write_to_reticulum_side(self):
         while True:
             try:
                 data = self.socket.recv(DEFAULT_PACKET_SIZE);
-                if len(data) == 0:
+                if len(data) == 0: # if no more data socket is probably cooked so cancel
+                    self.teardown_otherside()
                     break
                 else:
                     self.wrapped_buffer.write(data);
             except Exception as exception:
-                # print(exception)
+                print(f"write: {exception}")
                 break
 
-        self.drop_from_internal()
+        self.teardown_socket()
 
-    # if the other side told us to close
-    def drop_from_external(self):
-        pass
+    # if the other side told us to close or something happened locally
+    def teardown_socket(self):
+        try:
+            self.socket.shutdown(socket.SHUT_RDWR)
+        except OSError: # shutting down a socket that is closed gives us this so.
+            pass
+        finally:
+            self.socket.close()
+        ## generally the threads will teardown themselves at this piont.
 
-    # if we are closing it
-    def drop_from_internal(self):
-        self.socket.close()
-        # pass
-    
+    # if our local side's socket disconnects we should notify the other side
+    def teardown_otherside(self):
+        self.destroy_buffer_func(self);
 
 
-    def __init__(self, wrapped_buffer, socket):
+
+    def __init__(self, wrapped_buffer, socket, destroy_buffer_func):
         self.socket = socket
         self.wrapped_buffer = wrapped_buffer;
+        self.destroy_buffer_func = destroy_buffer_func
         # print(socket.recv(100))
-        threading.Thread(target=self.read_from_reticulum_side,args = (), daemon=True).start();
-        threading.Thread(target=self.write_to_reticulum_side,args = (), daemon=True).start();
+        self.read_thread = threading.Thread(target=self.read_from_reticulum_side,args = (), daemon=True);
+        self.write_thread = threading.Thread(target=self.write_to_reticulum_side,args = (), daemon=True);
+
+        self.read_thread.start();
+        self.write_thread.start();
 
 def convert_str_to_destination(destination_hexhash):
     try:

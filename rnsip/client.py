@@ -14,34 +14,37 @@ class Client:
     def new_link(self, link):
         self.client_link = ClientLink(link)
 
+    def closed_link(self, link):
+        print(f"link has been closed {link}")
+
 
 class ClientLink:
     def __init__(self, link):
         self.id_rolling = 1;
+        self.connection_lock = threading.Lock()
         self.link = link
-        self.buffers = {}
+        self.connections = {}
         self.channel = link.get_channel();
         self.master_buffer = MasterBufferClient(self, self.channel)
 
     def new_connection(self, tcp_socket_connection, connection_type=None):
         # techincally two connections could happen at once and overwrite the id but I'm not worried bout that rn
+        self.connection_lock.acquire()
         id = self.id_rolling + 1
         self.id_rolling = id;
+        self.connection_lock.release()
 
-        buffer = ReticulumBufferWrapper(self.channel, id)
-        # time.sleep(0.01)
-        self.master_buffer.new_connection(id);
-
-        print(f"making buffer {id} (remove delay at some point)")
-        time.sleep(0.01)
-        self.buffers[id] = SocksClientConnection(tcp_socket_connection, buffer, connection_type=connection_type)
+        self.connections[id] = SocksClientConnection(tcp_socket_connection, self, id,  connection_type=connection_type)
         
-    def close(self, id):
-        self.master_buffer.new_connection(id);
+    def close_connection(self, id):
+        self.master_buffer.close_connection(id);
+        self.connections[id] = None;
+
+    def teardown(self):
+        pass
 
 
 class MasterBufferClient:
-
     def master_interaction_thread(self):
 
         self.buffer.write(bytes([AUTH_PASS,0x00,0x00])); ## should be a password thing here later. But this is basically saying no pass
@@ -75,13 +78,8 @@ class MasterBufferClient:
 
         threading.Thread(target=self.master_interaction_thread,args = (), daemon=True).start();
 
-    def new_connection(self, id):
-        new_connection = struct.pack("!BI", NEW_BUFFER, id); 
-        self.buffer.write(new_connection)
-        self.buffer.flush()
-
     def close_connection(self, id):
-        new_connection = struct.pack("!BI", END_BUFFER, id); 
+        new_connection = struct.pack("!BI", END_CONNECTION, id); 
         self.buffer.write(new_connection)
         self.buffer.flush()
 
@@ -115,22 +113,26 @@ class SocksClientConnection:
         # gives some bogus response equivalent to "yea we gonna sent all your traffic to 0.0.0.0:0,
         # don't worry about it the operation was successful. trust me bro.
 
-        BufferTcpExchange(self.buffer, self.tcp_socket)
+        def destroy_buffer(exchange):
+            self.client_link.close_connection(exchange.wrapped_buffer.id)
+
+        self.exchange = BufferTcpExchange(self.buffer, self.tcp_socket, destroy_buffer)
 
     def flush_initial(self):
         # occasionally we will send data to the remote buffer
         # before it has actually initialised, which causes problems
         # so we just keep flushing the bytes till it works out
+        self.buffer.flush();
         for i in range(1,25):
-            self.buffer.flush();
             time.sleep(0.01)
             self.buffer.flush();
 
-
     
-    def __init__(self,tcp_socket, buffer, connection_type=None):
-        self.buffer = buffer;
+    def __init__(self,tcp_socket, client_link, buffer_id, connection_type=None):
+        self.buffer = ReticulumBufferWrapper(client_link.channel, buffer_id)
         self.tcp_socket = tcp_socket
+        self.buffer_id = buffer_id;
+        self.client_link = client_link
 
         threading.Thread(target=self.flush_initial,args = (), daemon=True).start();
         threading.Thread(target=self.handshake,args = (), kwargs={"connection_type":connection_type}, daemon=True).start();
