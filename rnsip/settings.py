@@ -9,9 +9,9 @@ from const import *
 class SocksOptionServer:
     type = ANN_SOCKSV5 
     def __init__(self, args):
-        print(args)
         self.upspeed = int(args.upspeed or DEFAULT_UPSPEED_SOCKS)
         self.downspeed = int(args.downspeed or DEFAULT_DOWNSPEED_SOCKS)
+
     def print(self):
         print(f"    Socks:");
         print(f"        Upspeed: {self.upspeed}B/s");
@@ -65,7 +65,6 @@ class ServerSettings:
         self._password = initial_args.password or ""
         self._announcement_rate = int(initial_args.announcement_rate or DEFAULT_ANNOUNCEMENT_RATE)
         if initial_args.identity != None:
-            print("given identity")
             if os.path.isfile(initial_args.identity):
                 identity = RNS.Identity.from_file(initial_args.identity)
                 if identity is None:
@@ -209,7 +208,6 @@ class ClientSettings:
             elif options.option == "forward":
                 print("forward")
                 self.options.append(ForwardOptionClient(options))
-
 
         return self()
 

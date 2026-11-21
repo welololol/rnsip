@@ -1,4 +1,6 @@
-A proxy layer between reticulum and ip
+2
+
+A proxy layer between reticulum and ip traffic
 
 reticulum-ip allows for proxying of ip traffic through the reticulum network. The wire format and repo intentionally is as minimial as possible to avoid reinventing the wheel.
 
@@ -70,6 +72,7 @@ appdata = Name:str Description:str, UpSpeed:int, DownSpeed:int, {Contact | Socks
 
 lower 0x80 is used for actual configuration.
 
+End: 0x00, denotes the end of the announcemet, note that in actual annoucement packets, we don't actually include this at the end as it is implied by size of the announcement anyways so internally we just add in a 0x00 byte at the end for convenience. We do however send the null byte on Accept_and_Annc
 Socksv5: 0x01, {UpSpeed, DownSpeed, Flags (allow private, allow public, passworded, more undefined, allow udp, allow bind)}
 Forwarded: 0x02, {Flags (udp, tcp, ipv4|ipv6|hostname|none), binary of ipv4,ipv6,hostname or none for local, port, description:str}(don't implement that the none functionality for now)
 
