@@ -37,50 +37,45 @@ def main():
     parser = argparse.ArgumentParser(description="A reticulum ip proxy")
     parser.add_argument("--configdir", default=None, help="Reticulum config directory (default ~/.reticulum)")
     parser.add_argument("--identity", default=None, help="reticulum identity")
-    parser.add_argument("--debug_level", default=3, help="reticulum identity")
+    parser.add_argument("--debug-level", default=3, help="reticulum identity")
 
     subparsers = parser.add_subparsers(dest='subcommand')
 
     parser_server = subparsers.add_parser("server")
-    parser_server.add_argument("--name");
-    parser_server.add_argument("--lxmf");
-    parser_server.add_argument("--nomadnet");
-    parser_server.add_argument("--description");
-    parser_server.add_argument("--password");
-    parser_server.add_argument("--announcement_rate");
+    parser_server.add_argument("--requires-identity", action="store_true");
+    parser_server.add_argument("--name", default="");
+    parser_server.add_argument("--description", default="");
+    parser_server.add_argument("--password", default="");
+    parser_server.add_argument("--announcement-rate", type=int, default=DEFAULT_ANNOUNCEMENT_RATE);
 
     parser_client = subparsers.add_parser("client")
     parser_client.add_argument("destination");
+    parser_client.add_argument("--password", default="");
+    parser_client.add_argument("--transmit-identity");
 
     parser_discovery = subparsers.add_parser("discovery")
     parser_discovery.add_argument("idk");
 
     namespace ,extra_args = parser.parse_known_args();
     subcommand = namespace.subcommand; 
+    print(namespace, extra_args)
 
-    print(namespace, extra_args, subcommand)
     rns = RNS.Reticulum(configdir=namespace.configdir, loglevel=int(namespace.debug_level));
-
-
 
     if subcommand == "client":
         settings = ClientSettings.parse_args(namespace, extra_args)
         client_connection = client.Client(settings)
-        print("connection")
         for option in settings.options:
-            print("option", option)
             if isinstance(option, ForwardOptionClient):
-                print("forward")
                 forward_connection = forward.TCPPortForward(option, client_connection)
             elif isinstance(option, SocksOptionClient):
-                print("socks")
                 socks.SocksProxyLocal(option, client_connection)
             else:
-                print("done?")
+                print("properly implement errors later")
+                raise Exception
     elif subcommand == "server":
         settings = ServerSettings.parse_args(namespace,extra_args)
-        print("parsed settings")
-        print(settings.print("me"))
+        settings.print("me")
         set = settings.to_bytes()
         set.extend(bytearray([0x00]))
         print(set)
@@ -93,7 +88,6 @@ def main():
         new_settings = settings.from_bytes(read_buffer)
         new_settings.print("other me")
         server_runner = server.Server(settings)
-        print("server now running")
     else:
         print("INVALID COMMAND")
 

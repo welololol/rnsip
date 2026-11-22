@@ -30,6 +30,7 @@ ANN_OTHER_DESTINATION = 0x80
 ANN_LXMF = 0x81
 ANN_NOMADNET = 0x82
 
+ANN_FLAG_REQUIRE_IDENTITY = 0b10000000
 
 # DEFAULTS
 
@@ -47,4 +48,4 @@ DEFAULT_PACKET_SIZE = 8096 # reasonable compormise between python overhead and n
 # in minutes
 DEFAULT_ANNOUNCEMENT_RATE = 90 
 
-DEFAULT_CONNECTION_BUFFER = 1000 # the amoutn of connections we are listening to just in case
+DEFAULT_CONNECTION_BUFFER = 25 # the amoutn of connections we are listening to just in case

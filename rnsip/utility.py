@@ -59,8 +59,8 @@ class ReticulumBufferWrapper: # Utility class because the reticulum callback thi
 class ConnectionType:
     # host:port and then udp/tcp pair.
     # host can be anythign in the host type
-    def __init__(self, cmd, host, port):
-        self.cmd = cmd
+    def __init__(self, type, host, port):
+        self.type = type
         self.host = host
         self.port = port
 
@@ -69,16 +69,16 @@ class ConnectionType:
         b = read_func(3);
         connection_response = struct.unpack("!BBx",b);
         version = connection_response[0] ## we don't really bother too much checking this.
-        cmd = connection_response[1]
+        type = connection_response[1]
 
         host = HostType.read_buf(read_func, cannonise=cannonise)        
 
         port = struct.unpack("!H", read_func(2))[0];
-        # print(f"Connection info: {version},{cmd},{host.atyp},{host.hostname}:{port}")
-        return cls(cmd,host,port)
+        # print(f"Connection info: {version},{type},{host.atyp},{host.hostname}:{port}")
+        return cls(type,host,port)
 
     @classmethod
-    def from_str_and_type(cls, string, cmd):
+    def from_str_and_type(cls, string, type):
         tuple = string.split(":")
         if len(tuple) == 1: ## user just put in a port, so we assume they mean localhost
             port = tuple[0]
@@ -89,20 +89,19 @@ class ConnectionType:
             
         port = int(port)
         
-        return cls(cmd, HostType.from_str(host), port)
+        return cls(type, HostType.from_str(host), port)
 
     def write(self):
         b = bytearray([])
-        print(f"cmd: {self.cmd}, port: {self.port}, host: {self.host}")
         
-        b.extend(struct.pack("!BBxB",SOCKS_VERSION, self.cmd,self.host.atyp))
+        b.extend(struct.pack("!BBxB",SOCKS_VERSION, self.type,self.host.atyp))
         b.extend(self.host.write())
 
         b.extend(struct.pack("!H",self.port))
         return b
 
     def __str__(self):
-        if self.cmd == CMD_CONNECT:
+        if self.type == CMD_CONNECT:
             return f"{self.host.hostname}:{self.port} TCP"
         else:
             return f"{self.host.hostname}:{self.port} UDP"
@@ -172,13 +171,13 @@ class BufferTcpExchange():
                 else:
                     self.wrapped_buffer.write(data);
             except Exception as exception:
-                print(f"write: {exception}")
                 break
 
         self.teardown_socket()
 
     # if the other side told us to close or something happened locally
     def teardown_socket(self):
+        print(f" end socket {self.wrapped_buffer.id}")
         try:
             self.socket.shutdown(socket.SHUT_RDWR)
         except OSError: # shutting down a socket that is closed gives us this so.
@@ -189,15 +188,16 @@ class BufferTcpExchange():
 
     # if our local side's socket disconnects we should notify the other side
     def teardown_otherside(self):
-        self.destroy_buffer_func(self);
-
-
+        if not self.already_deleted:
+            self.destroy_buffer_func();
+            self.already_deleted = True;
 
     def __init__(self, wrapped_buffer, socket, destroy_buffer_func):
         self.socket = socket
         self.wrapped_buffer = wrapped_buffer;
+        self.already_deleted = False;
         self.destroy_buffer_func = destroy_buffer_func
-        # print(socket.recv(100))
+
         self.read_thread = threading.Thread(target=self.read_from_reticulum_side,args = (), daemon=True);
         self.write_thread = threading.Thread(target=self.write_to_reticulum_side,args = (), daemon=True);
 

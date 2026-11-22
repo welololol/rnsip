@@ -12,13 +12,16 @@ from const import *
 class Server: # only one instance of this exists
     def __init__(self, settings):
         self.settings = settings
+        self.latest_link_id = 100000 # we start at a higher id just so that links look different than other ids, doesn't cost anything really
+        # as we already putting everything in a dict anyways, so this is just arbitary.
+        self.links = {}
         destination = RNS.Destination(settings._identity_bytes, RNS.Destination.IN, RNS.Destination.SINGLE, "ip", "socksv5");
         destination.accepts_links(accepts=True)
         self.destination = destination
 
         threading.Thread(target=self.announcement_loop,args = (), daemon=True).start();
 
-        destination.set_link_established_callback(self.new_connection);
+        destination.set_link_established_callback(self.link_connection);
         print(f"Destination: {RNS.prettyhexrep(destination.hash)}")
 
     def announcement_loop(self):
@@ -27,15 +30,29 @@ class Server: # only one instance of this exists
             self.destination.announce(app_data=settings_bytes);
             time.sleep(self.settings._announcement_rate * 60)
 
-    def new_connection(self, link):
-        print("New link")
-        self.latest_server_link = ServerLink(self, link) 
+    def link_connection(self, link):
+        # shouldn't link have their own id, can't find api for it?
+        # not sure if we need a lock cause I don't think the callback makes a new thread, check later.
+        id = self.latest_link_id + 1
+        self.latest_link_id = id;
+        server_link = ServerLink(self, link, id)
+        self.links[id] = server_link 
+        print(f"new link of id {id}")
 
-class ServerLink: # This is the per client connection
+        def on_close(link):
+            print(f"link of id {id} has been closed")
+            print(server_link)
+            server_link.teardown()
 
-    def __init__(self, server, link):
+        link.set_link_closed_callback(on_close)
+
+
+class ServerLink: # This is the per client/link connection
+
+    def __init__(self, server, link, link_id):
         self.server = server;
         self.link = link;
+        self.link_id = link_id
         self.connections = {} ## int to connections but we actually use a directory
         self.channel = link.get_channel();
         self.adding_connections_lock = threading.Lock();
@@ -44,23 +61,27 @@ class ServerLink: # This is the per client connection
         self.buffer_of_connections(2)
 
 
-    def teardown_link(self):
-        RNS.log("TEARING DOWN LINK")
+    def teardown(self):
+        RNS.log("TEARING DOWN LINK (kill all connections?)")
 
         self.link.teardown();
+        print(self.connections)
+        for connection in self.connections.values():
+            connection.teardown(internal=False)
 
     def buffer_of_connections(self, latest_buffer_id):
         self.adding_connections_lock.acquire()
-        for i in range(latest_buffer_id,latest_buffer_id + DEFAULT_CONNECTION_BUFFER):
-            if self.connections.get(str(i)) == None:
-                self.connections[str(i)] = Connection(self, i) 
+        for id in range(latest_buffer_id,latest_buffer_id + DEFAULT_CONNECTION_BUFFER):
+            if self.connections.get(id) == None:
+                self.connections[id] = Connection(self, id) 
         self.adding_connections_lock.release()
 
     def close_connection_remote(self, id):
         self.master_buffer.close_connection_signal(id);
 
     def close_connection_local(self,id):
-        self.connections[str(id)].teardown()
+        self.connections[id].teardown(internal=False)
+        del self.connections[id] # allows the underlying connection to be garbage collected
 
         
 
@@ -69,39 +90,43 @@ class Connection: ## an individual tcp or udp connection (not really udp but tha
     def __init__(self, server_link, buffer_id ):
         self.buffer = ReticulumBufferWrapper(server_link.channel, buffer_id);
         self.server_link = server_link
-        self.finished_handshake = True;
-        self.handshake_thread = threading.Thread(target=self.handshake,args = (buffer_id,), daemon=True).start();
+        self.finished_handshake = False;
+        self.remote_socket = None;
+        self.handshake_thread = threading.Thread(target=self.handshake,args = (), daemon=True).start();
         
-    def handshake(self, buffer_id):
+    def handshake(self):
         connection_type = ConnectionType.read_buf(self.buffer.read_exact)
-        
-        self.server_link.buffer_of_connections(buffer_id)
+        self.server_link.buffer_of_connections(self.buffer.id)
+        print(f"[{self.server_link.link_id}] [{self.buffer.id}] from request connection has been formed to {str(connection_type)}")
+        if connection_type.type == CMD_CONNECT:
+            self.run_connect(connection_type) 
+        else:
+            print(f"invalid cmd for handshake {connection_type.type}")
 
-        self.remote_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.remote_socket.connect((connection_type.host.hostname,connection_type.port))
-        self.buffer.write(bytes([REP_SUCCEEDED]));
-
-        self.finished_handshake = True;
-        def remote_close(exchange):
-            self.server_link.close_connection_remote(exchange.wrapped_buffer.id)
-            pass
-
-        self.buffer_exchange = BufferTcpExchange(self.buffer, self.remote_socket, remote_close)
-
-    def teardown(self):
+    def teardown(self, internal=True):
+        # if internal then propagate upwards to clientlink so that the other side knows, if not just delete
+        print(f"[{self.server_link.link_id}] [{self.buffer.id}] is being torn-down {internal}")
         if self.finished_handshake:
             self.buffer_exchange.teardown_socket()
         else:
             ## must be paused on handshake
-            self.remote_socket.close()
-        
-        # if  f
+            if self.remote_socket: # assuming we ever even started the socket
+                self.remote_socket.close()
+        if internal == True:
+            self.server_link.close_connection_remote(self.buffer_exchange.wrapped_buffer.id)
+
 
     def get_connection_type():
         pass
 
-    def run_connect():
-        pass
+    def run_connect(self, connection_type):
+        self.remote_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.remote_socket.connect((connection_type.host.hostname,connection_type.port))
+
+        self.buffer.write(bytes([REP_SUCCEEDED]));
+        self.finished_handshake = True;
+
+        self.buffer_exchange = BufferTcpExchange(self.buffer, self.remote_socket, self.teardown)
 
     def run_udp_associate():
         pass

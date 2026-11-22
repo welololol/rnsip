@@ -23,5 +23,4 @@ class TCPPortForward:
     def connection(self, tcp_connection):
         # connection_type = ConnectionType(CMD_CONNECT, ATYP_DOMAINNAME , self.remote_connection)
         
-        print("local connection made")
         self.client.client_link.new_connection(tcp_connection, connection_type=self.remote_connection)
