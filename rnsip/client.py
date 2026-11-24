@@ -181,6 +181,7 @@ class SocksClientConnection:
         self.client_link = client_link
         self.finished_handshake = False
 
+        self.tcp_socket.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
         threading.Thread(target=self.flush_initial,args = (), daemon=True).start();
         threading.Thread(target=self.handshake,args = (), kwargs={"connection_type":connection_type}, daemon=True).start();
 
