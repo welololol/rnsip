@@ -248,7 +248,7 @@ class BufferTcpExchange():
             print(f"read {len(data)}")
             if len(data) == 0:
                 print("shit is hitting the fan a little")
-                break
+                # break
             try:
                 self.socket.sendall(data)
             except OSError: #if we can't send to socket, it's cooked then return.
