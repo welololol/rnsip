@@ -5,6 +5,7 @@ import RNS
 import struct
 import socket
 import time
+import filtering
 from utility import *
 from RNS.vendor import umsgpack as msgpack
 from const import * 
@@ -98,10 +99,18 @@ class Connection: ## an individual tcp or udp connection (not really udp but tha
         connection_type = ConnectionType.read_buf(self.buffer.read_exact)
         self.server_link.buffer_of_connections(self.buffer.id)
         print(f"[{self.server_link.link_id}] [{self.buffer.id}] from request connection has been formed to {str(connection_type)}")
-        if connection_type.type == CMD_CONNECT:
-            self.run_connect(connection_type) 
+        new_address, connection_speed = filtering.filter_ip_based_on_settings(connection_type, self.server_link.server.settings)
+        if new_address != None:
+            self.buffer.write(bytes([REP_SUCCEEDED]));
+            connection_type.host.hostname = new_address
+            print(new_address, connection_speed)
+            if connection_type.type == CMD_CONNECT:
+                self.run_connect(connection_type) 
+            else:
+                print(f"invalid cmd for handshake {connection_type.type}")
         else:
-            print(f"invalid cmd for handshake {connection_type.type}")
+            self.buffer.write(bytes([REP_FAILURE]));
+
 
     def teardown(self, internal=True):
         # if internal then propagate upwards to clientlink so that the other side knows, if not just delete
@@ -123,7 +132,6 @@ class Connection: ## an individual tcp or udp connection (not really udp but tha
         self.remote_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.remote_socket.connect((connection_type.host.hostname,connection_type.port))
 
-        self.buffer.write(bytes([REP_SUCCEEDED]));
         self.finished_handshake = True;
 
         self.buffer_exchange = BufferTcpExchange(self.buffer, self.remote_socket, self.teardown)
@@ -169,5 +177,5 @@ class MasterBufferServer:
 
     def close_connection_signal(self, id):
         new_connection = struct.pack("!BI", END_CONNECTION, id); 
+        print(new_connection)
         self.buffer.write(new_connection)
-        self.buffer.flush()

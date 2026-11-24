@@ -1,5 +1,5 @@
 > [!CAUTION]
-> This is still being actively developed and may be insecure. Client side it should be safe to use however be wary of using this server side
+> This is still being actively developed and may be insecure. Client side it should be safe to use however be wary of using this server side cause you may allow random reticulum arbitary ability to access any ports in your private/local network.
 
 > [!NOTE]
 > While I want to make a stable protocol at some point, this will be unstable for the time being as I make a usable program
@@ -116,7 +116,7 @@ Announcements/Forwarding stuff
 
 instead of having a forward and socks "option", actually we'll now call it, nah option is fine actually for a name.
 
-We have just a general "forward" thing, which denotes a set of addresses, and some flags.
+We have just a general "forward" thing, which denotes a set of addresses, and some flags. 
 
 For instance, we could have a forward option that denotes all public addresses. or one that denotes private ip addresses.
 Or another that denotes all addresses, or addresses of a certain regex or a certain ipv4/6 range or localhost or whatever.
@@ -139,7 +139,7 @@ the lower 128 would share with the atyp ones.
 
 ## all possible atyp options
 
-0x00: everything/all
+0x00: END OF OPTIONS
 0x01: ipv4 address
 0x02: localhost (only included to save 4 bytes for common addresses, should also be understood by the reticulum bridge and transmited back on the other side so that instead transmitting 5 bytes to connect to a local address, we just use 1 byte because I reckon using localhost addresses will be common enough that this will help save a little bandwidth)
 0x03: domain name (socks spec)
@@ -148,9 +148,9 @@ the lower 128 would share with the atyp ones.
 0x06: ipv6 block
 0x07: regex (applying to the string form of whatever input you give it including domain names and ips)
 0x08: public ip addresses (based on python definition)
-0x09: private ip addresses
+0x09: private ip addresses (just make the user state which ones? inverse of public anywyas so we could remove)
 0x0A: loopback addresses (different than localhost, shorthand for the 127.0.0.1/8 block, not sure if this is actually useful)
-0x0B: reserved.
+0x0B: Everything/All.
 0x0C: reserved
 0x0D: Unknown?
 0x0E: Custom but without the string? So, like, unknown basically, could do anything
@@ -202,19 +202,28 @@ for max downspeed or upspeed, we denote a blocked_time. which denotes how long w
 every time we send/receive a packet, we do blocked_time += bits / bitrate, so we if we send 1kB of data throgh with a limit
 of 10/kBs, we pause sending/receiving for 0.1 seconds (using time.sleep)
 
+There would also be a average-time or buffer or whatever value, because the above only implies that the average speed since the connection has started has to be 10/kBs but allows for higher bursts, so instead blocked_time = max(blocked_time + bits/ bitrate, time.current_time() - buffer_time), if buffer time is 1 second, that means that there is no filtering as long as the connection on average in the last 1 second is nto mroe than 10kb/s, meaning that the user could send 10kb in a single instant and be fine if had not being using traffic previously.
+
 Maybe some considering for reducing the amount of data we trying to send if the max bitrate is low, like if it's 1mb/s then
 send 10KB of data at a time, but if it's like 10kb/s per second, maybe just send 455 bytes at once. Thing is that the reticulum
 link itself could have a max of a certain amount of bytes.
 
-based on the filters, you could have a filter_id, ie, so if the  is for all public web traffic and th
+
+based on the filters, you could have a filter_id, ie, so if the is for all public web traffic is 10kb/s the server will limit it, but also
+have the client limit it as well because it'll know which filter it is under and thus what datarates to stick to
 so that the client only tries to send data as quickly as the server will send it out. This isn't necessary persay but it stops an
 application from being confused because it send out all it's tcp data in like 0.1 seconds but it hasn't heard a reply yet in 10 seconds
 because the reticulum link is only 500b/s, and the initial send is still going through the wire even though the application thinks
 that all the data has been accepted already. should also smooth out reticululm traffic a little, as if the upspeed limit is
-1024B/s, there's no reason to send a 100mb file through a poor i2p/backbone link at full speed.
+1024B/s, there's no reason to send a 100mb file through a poor i2p/backbone link at full speed if the end point is limited.
+
+Same thing could maybe apply reticulum side, I'm not quite sure what happens if reticulum cannot send out packets fast enough
 
 
-## TAP interface
+the atyp byte should be before the flag byte. because only some atyp options have flags after them, and the 0x00 byte shouldn't carry with it an entire new byte for no reason.
+
+
+## TUN interface
 
 For later but, this would be basically jsut be a server, client thing similar to the socks thing.
 every link gets it's own ip address, controlled by the server (server sends back it's ip, and the client just has to deal with it)
@@ -225,13 +234,38 @@ it'll be sent back into the program, else it'll just be sent to the device's loc
 Only protection this grants is that we'll only send ip packets to the corresponding identity and only allow ip backs if the receipt is the one who sent it.
 However, that's more of a bandwidth thing than a security thing, and everything else you just use a commerical firewall.
 
-The only thing that is that you should allow hooking in to an existing tap interface to make firewalling on the server easier.
+The only thing that is that you should allow hooking in to an existing tun interface to make firewalling on the server easier.
 
 Also adding some adhoc command in addition to server and client, where you just give a list of identities and ip addresses, and a tun interface is created for every one of them (or it's a single tun interface that you map everything to, either or), and each client creates a link to every other client that is online.
+
+Also tell the user that they have to setup their own firewall,nat, or whatever to actually get this properly working and that's more effort.
 
 see https://pypi.org/project/python-pytun/ https://www.gabriel.urdhr.fr/2021/05/08/tuntap/ for I get around to this.
 
 ## Tap
 
-Tun would be the exact same, and would not be difficult at all to implement, but also would be very little reason to actually use one besides testing and coolness factor
+Tun would be the exact same, and would not be difficult at all to implement, but also would be very little reason to actually use one besides testing and coolness factor. Also kinda goes against the name rnsip cause that implies layer 3 and this is layer 2, but meh.
 
+## preventing dns leaks
+
+we don't want to resolve domain names if we don't have to. if the user sends google.com that's fine but if they send veryspecificwebsite.net they could find the server's
+ip address.
+
+Probably just a --do-not-resolve setting would be fine.
+
+note that a hostname's ip address and the hostname itself could produce different results.
+
+The filtering function should be this
+
+def filter(domain, ipaddr)
+
+if domain is present, ip addr will be unless --do-not-resolve-dns is on
+if ip addr is present, that does not necessary mean domain is.
+
+
+## other weird filtering issue
+
+if you specify that all addresses are udp/tcp accessible with a low speed
+but then also that localhost is accessible with tcp at a high speed, localhost
+should then just not be accessible with udp at all. same with ports, if port 22 is
+avaliable on 127.0.0.5 but not the loopback generallyvb

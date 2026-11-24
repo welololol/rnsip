@@ -9,7 +9,8 @@ import socks
 import client
 import server
 import forward
-from settings import *
+from server_settings import *
+from client_settings import *
 # import asyncio_socks_server
 
 
@@ -78,9 +79,12 @@ def main():
         settings.print("me")
         set = settings.to_bytes()
         set.extend(bytearray([0x00]))
-        print(set)
 
+        print("hm")
+        print(set)
         def read_buffer(n):
+            if n > len(set):
+                raise Exception
             data = bytes(set[:n])
             del set[:n]        
             return data

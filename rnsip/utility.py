@@ -1,3 +1,4 @@
+import ipaddress
 import threading
 import struct
 import socket
@@ -17,7 +18,6 @@ class ReticulumBufferWrapper: # Utility class because the reticulum callback thi
 
     def read_exact(self, len_data): # weird fix to do make callback work. Reads that specific amount of bytes and waits
         # if there isn't enough bytes then wait (not impl yet but it'll probably be fine)
-
         while self.held < len_data:
             self.event.wait()
             self.event.clear()
@@ -94,10 +94,11 @@ class ConnectionType:
     def write(self):
         b = bytearray([])
         
-        b.extend(struct.pack("!BBxB",SOCKS_VERSION, self.type,self.host.atyp))
+        b.extend(struct.pack("!BBx",SOCKS_VERSION, self.type))
         b.extend(self.host.write())
 
         b.extend(struct.pack("!H",self.port))
+        print(b)
         return b
 
     def __str__(self):
@@ -116,8 +117,12 @@ class HostType:
         connection_response = struct.unpack("!B",read_func(1));
         atyp = connection_response[0]
 
-        if atyp == ATYP_IPV4: ## ipv4 host
+        if atyp == ATYP_EXIT:
+            return None
+        elif atyp == ATYP_IPV4: ## ipv4 host
             hostname = socket.inet_ntoa(read_func(4))
+        elif atyp == ATYP_ALL:
+            hostname = ""
         elif atyp == ATYP_DOMAINNAME: ## hostname host
             host_size = struct.unpack("!B",read_func(1))[0];
             data = read_func(host_size)
@@ -125,7 +130,7 @@ class HostType:
         elif atyp == ATYP_IPV6: # ipv6 host
             hostname = socket.inet_ntop(socket.AF_INET6, read_func(16))
         else:
-            print(f"ERROR given type {atyp}")
+            print("invalid for some reason")
             while True:
                 print(read_func(1))
         
@@ -133,19 +138,108 @@ class HostType:
 
     @classmethod
     def from_str(cls, host):
-        return cls(ATYP_DOMAINNAME, host)
+        if host == "all":
+            return cls(ATYP_ALL, "")
+        elif host == "localhost":
+            return cls(ATYP_IPV4, "127.0.0.1")
+
+        else:
+            try:
+                ip = ipaddress.ip_address(host)
+                if ip.version == 4:
+                    return cls(ATYP_IPV4, ip.compressed)
+                else:
+                    return cls(ATYP_IPV6, ip.compressed)
+                    
+            except:
+                return cls(ATYP_DOMAINNAME, host)
+
 
     def __str__(self):
+        if self.atyp == ATYP_ALL:
+            return "all"
         return self.hostname
 
     def write(self):
-        b = bytearray([])
-        if self.atyp == ATYP_DOMAINNAME:
+        b = bytearray([self.atyp])
+        if self.atyp == ATYP_EXIT:
+            return b
+        elif self.atyp == ATYP_IPV4: ## ipv4 host
+            b.extend(ipaddress.IPv4Address(self.hostname).packed)
+        elif self.atyp == ATYP_ALL:
+            return b
+        elif self.atyp == ATYP_DOMAINNAME:
             b.extend(struct.pack("!B",len(self.hostname)))
             b.extend(self.hostname.encode("utf-8"))
+        elif self.atyp == ATYP_IPV6:
+            b.extend(ipaddress.IPv6Address(self.hostname).packed)
         else:
            print("write function not working")
         return b
+
+    def filter(self, ip_addr , domain):
+        print(self.atyp, self.hostname,  ip_addr, domain)
+        print(ip_addr == self.hostname)
+        print(type(ip_addr), type(self.hostname))
+        if self.atyp == ATYP_DOMAINNAME:
+            return domain == self.hostname
+        elif self.atyp == ATYP_ALL:
+            return True
+        elif self.atyp == ATYP_IPV4:
+            return ip_addr == self.hostname
+        elif self.atyp == ATYP_IPV6:
+            return ip_addr == self.hostname
+        else:
+            print("nothign to filter")
+            return False
+
+
+
+
+class PortFilter:
+    # possible types. All, Singular (includes port number), Range (two port numbers), Other (other stuff which is reserved for now)
+    # type is stored as the binary for convenience
+
+    def __str__(self):
+        if self.type == FILTER_FLAG_PORT_ALL:
+            return ""
+        elif self.type == FILTER_FLAG_PORT_SINGULAR:
+            return f":{self.ports}" 
+
+    def __init__(self, type, ports):
+        # ports can be a single int, a list, range or other depending on the specifics
+        self.type = type
+        self.ports = ports
+
+    @classmethod
+    def from_str(cls, str):
+        self = cls(FILTER_FLAG_PORT_SINGULAR, int(str))
+        return self
+
+    @classmethod
+    def read_buf(cls, read_func, stated_type):
+        if stated_type == FILTER_FLAG_PORT_ALL:
+            return cls(stated_type, None)
+        elif stated_type == FILTER_FLAG_PORT_SINGULAR:
+            return cls(stated_type, struct.unpack("!H", read_func(2))[0])
+        else:
+            print("uh oh")
+
+    def write(self):
+        if self.type == FILTER_FLAG_PORT_ALL:
+            return bytearray([]) #
+        else:
+            return struct.pack("!H", self.ports)
+
+    def filter(self, port):
+        if self.type == FILTER_FLAG_PORT_ALL:
+            return True
+        elif self.type == FILTER_FLAG_PORT_SINGULAR:
+            return self.ports == port
+        else:
+            return False
+
+
 
 class BufferTcpExchange():
     def read_from_reticulum_side(self):
@@ -203,6 +297,25 @@ class BufferTcpExchange():
 
         self.read_thread.start();
         self.write_thread.start();
+
+class ConnectionSpeeds(): # downspeed followed by upspeed always
+    def __init__(self, upspeed, downspeed):
+        self.upspeed = upspeed
+        self.downspeed = downspeed
+
+    def write(self):
+        b = bytearray([])
+        b.extend(struct.pack("!LL", self.downspeed,self.upspeed))
+        return b
+
+    def __str__(self):
+        return f"{self.downspeed}B/s down, {self.upspeed}B/s up"
+
+    @classmethod
+    def read_buf(cls, read_func):
+        downspeed, upspeed = struct.unpack("!LL", read_func(8))
+        return cls(upspeed, downspeed)
+
 
 def convert_str_to_destination(destination_hexhash):
     try:

@@ -47,10 +47,19 @@ class ClientLink:
         self.connections[id] = SocksClientConnection(tcp_socket_connection, self, id,  connection_type=connection_type)
         print(self.connections)
         
-    def close_connection(self, id):
+    def close_connection_remote(self, id):
         self.master_buffer.close_connection(id);
-        self.connections[id].teardown(internal=False)
-        del self.connections[id];
+        self.close_connection_local(id)
+
+    def close_connection_local(self,id):
+        self.connection_lock.acquire()
+        connection = self.connections.get(id)
+        if connection:
+            connection.teardown(internal=False)
+            del self.connections[id];
+        else:
+            print(f"trying to close a connection that does not exist [{id}]")
+        self.connection_lock.release()
 
     def teardown(self):
         RNS.log("TEARING DOWN LINK (kill all connections?)")
@@ -86,11 +95,20 @@ class MasterBufferClient:
 
         while True:
             cmd_return = struct.unpack("!B",self.wrapper_buffer.read_exact(1));
-            cmd = announce_cmd_return[0]
+            print(f" a{cmd_return}")
+            cmd = cmd_return[0]
+            print(f" yea {cmd}")
+            if cmd == END_CONNECTION:
+                connection_id = struct.unpack("!I", self.wrapper_buffer.read_exact(4))[0]; 
+                print(f"ending {connection_id}")
+                threading.Thread(target=self.client_link.close_connection_local,args = (connection_id,), daemon=True).start();
+            else:
+                pass
 
 
     def __init__(self, client_link , channel):
         self.wrapper_buffer = ReticulumBufferWrapper(channel, 1)
+        self.client_link = client_link
 
         threading.Thread(target=self.master_interaction_thread,args = (), daemon=True).start();
 
@@ -110,8 +128,8 @@ class SocksClientConnection:
         else:
             generated_connection = True;
 
-
-        self.buffer_wrapper.write(connection_type.write())
+        b =  connection_type.write()
+        self.buffer_wrapper.write(b)
         
         # the server then only replies with if the command is succesful given by the standard
         # however it doesn't reply with the destination port or whatever cause it's irrevalant for the most part
@@ -120,18 +138,21 @@ class SocksClientConnection:
         server_response = struct.unpack("!B", self.buffer_wrapper.read_exact(1))[0]
         if server_response != REP_SUCCEEDED:
             print(f"not actually succeed hold up {server_response}")
+            self.tcp_socket.shutdown(socket.SHUT_RDWR)
+            self.tcp_socket.close()
+        else:
 
-        if generated_connection == None:
-            self.tcp_socket.sendall(bytes([SOCKS_VERSION, REP_SUCCEEDED, 0x00, ATYP_IPV4, 0,0,0,0, 0,0]))
-        # gives some bogus response equivalent to "yea we gonna sent all your traffic to 0.0.0.0:0,
-        # don't worry about it the operation was successful. trust me bro.
+            if generated_connection == None:
+                self.tcp_socket.sendall(bytes([SOCKS_VERSION, REP_SUCCEEDED, 0x00, ATYP_IPV4, 0,0,0,0, 0,0]))
+            # gives some bogus response equivalent to "yea we gonna sent all your traffic to 0.0.0.0:0,
+            # don't worry about it the operation was successful. trust me bro.
 
-        self.finished_handshake = True
+            self.finished_handshake = True
 
-        def destroy_buffer():
-            self.client_link.close_connection(self.buffer_wrapper.id)
+            def destroy_buffer():
+                self.client_link.close_connection_remote(self.buffer_wrapper.id)
 
-        self.exchange_buffer = BufferTcpExchange(self.buffer_wrapper, self.tcp_socket, destroy_buffer)
+            self.exchange_buffer = BufferTcpExchange(self.buffer_wrapper, self.tcp_socket, destroy_buffer)
 
     def teardown(self, internal=True):
         # if internal then propagate upwards to clientlink so that the other side knows, if not just delete

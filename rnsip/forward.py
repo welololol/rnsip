@@ -9,6 +9,9 @@ class TCPPortForward:
         self.client = client
         self.remote_connection = settings.remote_connection
         self.local_connection = settings.local_connection
+        threading.Thread(target=self.listener,args = (), daemon=False).start()
+
+    def listener(self):
         with socket.socket() as listening_sock:
             ## allows for quick rebinding
             listening_sock.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1) 
