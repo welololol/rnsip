@@ -244,6 +244,8 @@ class BufferTcpExchange():
             data = self.wrapped_buffer.read(DEFAULT_PACKET_SIZE);
             if data != None:
                 print(f"read {len(data)}")
+            else:
+                print("none read")
             try:
                 self.socket.sendall(data)
             except OSError as e: #if we can't send to socket, it's cooked then return.
@@ -256,9 +258,14 @@ class BufferTcpExchange():
         while True:
             try:
                 data = self.socket.recv(DEFAULT_PACKET_SIZE);
-                print(f"write {len(data)}")
                 if data != None:
-                    self.wrapped_buffer.write(data);
+                    print(f"write {len(data)}")
+                    if len(data) != 0:
+                        self.wrapped_buffer.write(data);
+                    else:
+                        break
+                else:
+                    print("none write")
             except Exception as exception:
                 self.teardown_otherside()
                 break
