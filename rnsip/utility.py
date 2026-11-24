@@ -245,6 +245,7 @@ class BufferTcpExchange():
     def read_from_reticulum_side(self):
         while True:
             data = self.wrapped_buffer.read(DEFAULT_PACKET_SIZE);
+            print(f"read {len(data)}")
             if len(data) == 0:
                 print("shit is hitting the fan a little")
                 break
@@ -259,6 +260,7 @@ class BufferTcpExchange():
         while True:
             try:
                 data = self.socket.recv(DEFAULT_PACKET_SIZE);
+                print(f"write {len(data)}")
                 if len(data) == 0: # if no more data socket is probably cooked so cancel
                     self.teardown_otherside()
                     break
