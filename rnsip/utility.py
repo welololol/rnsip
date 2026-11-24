@@ -248,10 +248,11 @@ class BufferTcpExchange():
             print(f"read {len(data)}")
             if len(data) == 0:
                 print("shit is hitting the fan a little")
-                break
+                # break
             try:
                 self.socket.sendall(data)
-            except OSError: #if we can't send to socket, it's cooked then return.
+            except OSError as e: #if we can't send to socket, it's cooked then return.
+                print(f" error: {e}")
                 self.teardown_otherside()
                 break
         self.teardown_socket()
@@ -262,7 +263,7 @@ class BufferTcpExchange():
                 data = self.socket.recv(DEFAULT_PACKET_SIZE);
                 print(f"write {len(data)}")
                 if len(data) == 0: # if no more data socket is probably cooked so cancel
-                    self.teardown_otherside()
+                    # self.teardown_otherside()
                     break
                 else:
                     self.wrapped_buffer.write(data);
