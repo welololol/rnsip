@@ -25,7 +25,7 @@ class ReticulumBufferWrapper: # Utility class because the reticulum callback thi
 
         data = self.buffer.read(len_data)
         if data == None:
-            return bytes([])
+            return None
 
         self.held -= len(data)
         return data
@@ -38,7 +38,7 @@ class ReticulumBufferWrapper: # Utility class because the reticulum callback thi
 
         data = self.buffer.read(len_data)
         if data == None:
-            return bytes([])
+            return None
 
         self.held -= len(data)
         return data
@@ -46,10 +46,7 @@ class ReticulumBufferWrapper: # Utility class because the reticulum callback thi
         # return self.buffer.read1(len_data)
 
     def write(self, data):
-        l = len(data)
         a = self.buffer.write(data)
-        if a != l:
-            print(f"MISMATCH {l} {a}")
         self.buffer.flush()
 
     def flush(self):
@@ -245,10 +242,8 @@ class BufferTcpExchange():
     def read_from_reticulum_side(self):
         while True:
             data = self.wrapped_buffer.read(DEFAULT_PACKET_SIZE);
-            print(f"read {len(data)}")
-            if len(data) == 0:
-                print("shit is hitting the fan a little")
-                # break
+            if data != None:
+                print(f"read {len(data)}")
             try:
                 self.socket.sendall(data)
             except OSError as e: #if we can't send to socket, it's cooked then return.
@@ -262,12 +257,10 @@ class BufferTcpExchange():
             try:
                 data = self.socket.recv(DEFAULT_PACKET_SIZE);
                 print(f"write {len(data)}")
-                if len(data) == 0: # if no more data socket is probably cooked so cancel
-                    # self.teardown_otherside()
-                    break
-                else:
+                if data != None:
                     self.wrapped_buffer.write(data);
             except Exception as exception:
+                self.teardown_otherside()
                 break
 
         self.teardown_socket()

@@ -75,4 +75,4 @@ DEFAULT_PACKET_SIZE = 8096 # reasonable compormise between python overhead and n
 # in minutes
 DEFAULT_ANNOUNCEMENT_RATE = 90 
 
-DEFAULT_CONNECTION_BUFFER = 25 # the amoutn of connections we are listening to just in case
+DEFAULT_CONNECTION_BUFFER = 15 # the amoutn of connections we are listening to just in case
