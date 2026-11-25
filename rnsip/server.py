@@ -145,8 +145,6 @@ class Connection: ## an individual tcp or udp connection (not really udp but tha
         # self.remote_socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 4096)
         # self.remote_socket.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 4096)
 
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
         self.remote_socket.connect((connection_type.host.hostname,connection_type.port))
 
         if self.torndown:
