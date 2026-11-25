@@ -156,9 +156,9 @@ class Connection: ## an individual tcp or udp connection (not really udp but tha
         if self.torndown:
             return
 
-        self.finished_handshake = True;
 
         self.buffer_exchange = BufferTcpExchange(self.buffer, self.remote_socket, self.teardown)
+        self.finished_handshake = True;
 
     def run_udp_associate():
         pass
