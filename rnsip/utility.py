@@ -259,6 +259,7 @@ class BufferTcpExchange():
                 print(f"read {len(data)}")
             else:
                 print("none read")
+                self.teardown_otherside()
                 break
             try:
                 self.socket.sendall(data)

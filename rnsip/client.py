@@ -157,6 +157,7 @@ class SocksClientConnection:
     def teardown(self, internal=True):
         # if internal then propagate upwards to clientlink so that the other side knows, if not just delete
         print(f"[{self.buffer_wrapper.id}] is being torn-down")
+        self.buffer_wrapper.clear_all_blocking()
         if self.finished_handshake:
             self.exchange_buffer.teardown_socket()
         else:
