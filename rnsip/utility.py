@@ -9,6 +9,7 @@ class ReticulumBufferWrapper: # Utility class because the reticulum callback thi
     def __init__(self, channel, id):
         self.buffer = RNS.Buffer.create_bidirectional_buffer(id, id, channel, self.data_in);
         self.event = threading.Event()
+        self.broken = False;
         self.id = id
         self.held = 0
 
@@ -17,8 +18,8 @@ class ReticulumBufferWrapper: # Utility class because the reticulum callback thi
         self.event.set()
 
     def clear_all_blocking(self):
+        self.broken = True;
         self.event.set()
-        self.held = 1000000000000000000
 
     def read_exact(self, len_data): # weird fix to do make callback work. Reads that specific amount of bytes and waits
         # if there isn't enough bytes then wait (not impl yet but it'll probably be fine)
@@ -26,6 +27,8 @@ class ReticulumBufferWrapper: # Utility class because the reticulum callback thi
             self.event.wait()
             self.event.clear()
 
+        if self.broken:
+            return None;
 
         data = self.buffer.read(len_data)
         if data == None:
@@ -40,6 +43,9 @@ class ReticulumBufferWrapper: # Utility class because the reticulum callback thi
             self.event.wait()
             self.event.clear()
 
+        if self.broken:
+            return None;
+
         data = self.buffer.read(len_data)
         if data == None:
             return None
@@ -50,13 +56,15 @@ class ReticulumBufferWrapper: # Utility class because the reticulum callback thi
         # return self.buffer.read1(len_data)
 
     def write(self, data):
+        if self.broken:
+            return
         a = self.buffer.write(data)
         if a != len(data):
             print("didn't write everything")
+            return None;
+        if self.broken:
+            return
         self.buffer.flush() # flush seems to be requried or everything breaks
-
-    def flush(self):
-        self.buffer.flush()
 
 
 class ConnectionType:

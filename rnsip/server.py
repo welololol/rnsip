@@ -200,7 +200,6 @@ class MasterBufferServer:
     def teardown(self):
         self.buffer.clear_all_blocking()
 
-
     def __init__(self, server_link ,channel):
         self.server_link = server_link
         self.buffer = ReticulumBufferWrapper(channel, 0)
