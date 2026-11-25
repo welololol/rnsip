@@ -49,7 +49,7 @@ class ReticulumBufferWrapper: # Utility class because the reticulum callback thi
         a = self.buffer.write(data)
         if a != len(data):
             print("didn't write everything")
-        # self.buffer.flush() # flush seems to be requried or everything breaks
+        self.buffer.flush() # flush seems to be requried or everything breaks
 
     def flush(self):
         self.buffer.flush()

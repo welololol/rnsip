@@ -108,7 +108,6 @@ class Connection: ## an individual tcp or udp connection (not really udp but tha
             return
         if new_address != None:
             self.buffer.write(bytes([REP_SUCCEEDED]));
-            self.buffer.flush()
             if self.torndown:
                 return
             connection_type.host.hostname = new_address
@@ -119,7 +118,6 @@ class Connection: ## an individual tcp or udp connection (not really udp but tha
                 print(f"invalid cmd for handshake {connection_type.type}")
         else:
             self.buffer.write(bytes([REP_FAILURE]));
-            self.buffer.flush()
 
 
     def teardown(self, internal=True):
