@@ -147,9 +147,9 @@ class Connection: ## an individual tcp or udp connection (not really udp but tha
 
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-
         self.remote_socket.connect((connection_type.host.hostname,connection_type.port))
-        # if self.torndown:
+
+        if self.torndown:
             return
 
         self.finished_handshake = True;
