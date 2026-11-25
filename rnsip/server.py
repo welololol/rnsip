@@ -36,6 +36,7 @@ class Server: # only one instance of this exists
         # not sure if we need a lock cause I don't think the callback makes a new thread, check later.
         id = self.latest_link_id + 1
         self.latest_link_id = id;
+        print(f"new link of id {id}")
         server_link = ServerLink(self, link, id)
         self.links[id] = server_link 
         print(f"new link of id {id}")
@@ -57,9 +58,11 @@ class ServerLink: # This is the per client/link connection
         self.connections = {} ## int to connections but we actually use a directory
         self.channel = link.get_channel();
         self.adding_connections_lock = threading.Lock();
+        print("creating buffer")
         self.master_buffer = MasterBufferServer(self,self.channel); # not techincally the same thign but whatever
-
         self.buffer_of_connections(2)
+        print("end")
+
 
 
     def teardown(self):
@@ -92,6 +95,7 @@ class Connection: ## an individual tcp or udp connection (not really udp but tha
         self.buffer = ReticulumBufferWrapper(server_link.channel, buffer_id);
         self.server_link = server_link
         self.finished_handshake = False;
+        self.torndown = False;
         self.remote_socket = None;
         self.handshake_thread = threading.Thread(target=self.handshake,args = (), daemon=True).start();
         
@@ -100,8 +104,13 @@ class Connection: ## an individual tcp or udp connection (not really udp but tha
         self.server_link.buffer_of_connections(self.buffer.id)
         print(f"[{self.server_link.link_id}] [{self.buffer.id}] from request connection has been formed to {str(connection_type)}")
         new_address, connection_speed = filtering.filter_ip_based_on_settings(connection_type, self.server_link.server.settings)
+        if self.torndown:
+            return
         if new_address != None:
             self.buffer.write(bytes([REP_SUCCEEDED]));
+            self.buffer.flush()
+            if self.torndown:
+                return
             connection_type.host.hostname = new_address
             print(new_address, connection_speed)
             if connection_type.type == CMD_CONNECT:
@@ -110,6 +119,7 @@ class Connection: ## an individual tcp or udp connection (not really udp but tha
                 print(f"invalid cmd for handshake {connection_type.type}")
         else:
             self.buffer.write(bytes([REP_FAILURE]));
+            self.buffer.flush()
 
 
     def teardown(self, internal=True):
@@ -123,6 +133,7 @@ class Connection: ## an individual tcp or udp connection (not really udp but tha
                 self.remote_socket.close()
         if internal == True:
             self.server_link.close_connection_remote(self.buffer_exchange.wrapped_buffer.id)
+        self.torndown = True;
 
 
     def get_connection_type():
@@ -132,6 +143,8 @@ class Connection: ## an individual tcp or udp connection (not really udp but tha
         self.remote_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.remote_socket.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
         self.remote_socket.connect((connection_type.host.hostname,connection_type.port))
+        if self.torndown:
+            return
 
         self.finished_handshake = True;
 
@@ -148,13 +161,18 @@ class MasterBufferServer:
     def master_interaction_thread(self):
         buffer = self.buffer
 
+        print(0)
         initial_request = struct.unpack("!BH", buffer.read_exact(3)) ## change later
         cmd = initial_request[0];
+        print(f"cmd {cmd}")
         if cmd != 0x01:
+            print(f" client send invalid command {cmd}")
             self.server_link.teardown_link()
 
+        print(1)
         password_len = initial_request[1]
         password_bytes = buffer.read_exact(password_len)
+        print(2)
 
         announce_data = b"dada"[:65535] # make sure to limit max size;
         announce_len = len(announce_data)
@@ -162,9 +180,11 @@ class MasterBufferServer:
         data = struct.pack("!BH",ACCEPT_AND_ANNC,announce_len)
         buffer.write(data);
         buffer.write(announce_data);
+        print("end of buffer")
 
         while True:
             cmd = struct.unpack("!B", buffer.read_exact(1))[0];
+            print(f"cmd {cmd}")
             if cmd == END_CONNECTION:
                 connection_id = struct.unpack("!I", buffer.read_exact(4))[0]; 
                 threading.Thread(target=self.server_link.close_connection_local,args = (connection_id,), daemon=True).start();
@@ -173,7 +193,9 @@ class MasterBufferServer:
 
     def __init__(self, server_link ,channel):
         self.server_link = server_link
+        print("a")
         self.buffer = ReticulumBufferWrapper(channel, 1)
+        print("b")
         threading.Thread(target=self.master_interaction_thread,args = (), daemon=True).start();
 
     def close_connection_signal(self, id):

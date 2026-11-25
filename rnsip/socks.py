@@ -25,16 +25,17 @@ class SocksProxyLocal:
         
     def connection(self, con, client):
         # print(con, client)
-        initial_request = struct.unpack("!BB",read_exact_from_socket(con,2));
-        version = initial_request[0]
-        hdr = initial_request[1];
+        if hasattr(self.client, "client_link"):
+            initial_request = struct.unpack("!BB",read_exact_from_socket(con,2));
+            version = initial_request[0]
+            hdr = initial_request[1];
+            # we ignore all methods for initiation cause we just accept it caues it's localhost
+            methods = read_exact_from_socket(con,hdr)
 
+            con.sendall(bytes([0x05, 0x00])) ## version number + we don't auth you don't have to send anything you good
 
-        # we ignore all methods for initiation cause we just accept it caues it's localhost
-        methods = read_exact_from_socket(con,hdr)
+            # after faking the auth process, we just start making a connection
 
-        con.sendall(bytes([0x05, 0x00])) ## version number + we don't auth you don't have to send anything you good
-
-        # after faking the auth process, we just start making a connection
-
-        client.client_link.new_connection(con)
+            client.client_link.new_connection(con)
+        else:
+            print(f"attempted to make connection to {con} link has not been formed")

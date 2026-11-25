@@ -72,18 +72,25 @@ class ClientLink:
 class MasterBufferClient:
     def master_interaction_thread(self):
 
-        self.wrapper_buffer.write(bytes([AUTH_PASS,0x00,0x00])); ## should be a password thing here later. But this is basically saying no pass
+        print("master 1")
+        self.wrapper_buffer.write(bytes([AUTH_PASS,0x00,0x00])) ## should be a password thing here later. But this is basically saying no pass
+        self.wrapper_buffer.flush()
+        print(2)
 
         a = self.wrapper_buffer.read_exact(3)
         announce_cmd_return = struct.unpack("!BH",a);
+        print(3)
         cmd = announce_cmd_return[0]
         if cmd != ACCEPT_AND_ANNC:
             print("shit has hit the fan")
             pass
+        print(4)
 
+        print("master 2")
         announce_len  = announce_cmd_return[1]
         announce_data = self.wrapper_buffer.read_exact(announce_len)
 
+        print("master 3")
         # by this point, the connection has be initialised.
         # the only thing the client needs to listen for is the server tearing down a connection
         # the only thing the server is listening for, is the client creating connections and also tearing them down

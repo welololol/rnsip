@@ -47,7 +47,9 @@ class ReticulumBufferWrapper: # Utility class because the reticulum callback thi
 
     def write(self, data):
         a = self.buffer.write(data)
-        self.buffer.flush()
+        if a != len(data):
+            print("didn't write everything")
+        # self.buffer.flush() # flush seems to be requried or everything breaks
 
     def flush(self):
         self.buffer.flush()
@@ -246,6 +248,7 @@ class BufferTcpExchange():
                 print(f"read {len(data)}")
             else:
                 print("none read")
+                continue
             try:
                 self.socket.sendall(data)
             except OSError as e: #if we can't send to socket, it's cooked then return.
@@ -262,6 +265,7 @@ class BufferTcpExchange():
                     print(f"write {len(data)}")
                     if len(data) != 0:
                         self.wrapped_buffer.write(data);
+                        # self.wrapped_buffer.flush()
                     else:
                         break
                 else:
