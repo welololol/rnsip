@@ -60,7 +60,7 @@ class ServerLink: # This is the per client/link connection
         self.adding_connections_lock = threading.Lock();
         print("creating buffer")
         self.master_buffer = MasterBufferServer(self,self.channel); # not techincally the same thign but whatever
-        self.buffer_of_connections(2)
+        self.buffer_of_connections(1)
         print("end")
 
 
@@ -72,6 +72,7 @@ class ServerLink: # This is the per client/link connection
         print(self.connections)
         for connection in self.connections.values():
             connection.teardown(internal=False)
+        self.link = None
 
     def buffer_of_connections(self, latest_buffer_id):
         self.adding_connections_lock.acquire()
@@ -127,8 +128,10 @@ class Connection: ## an individual tcp or udp connection (not really udp but tha
             self.buffer_exchange.teardown_socket()
         else:
             ## must be paused on handshake
+
             if self.remote_socket: # assuming we ever even started the socket
                 self.remote_socket.close()
+            self.buffer.clear_all_blocking()
         if internal == True:
             self.server_link.close_connection_remote(self.buffer_exchange.wrapped_buffer.id)
         self.torndown = True;
@@ -139,8 +142,8 @@ class Connection: ## an individual tcp or udp connection (not really udp but tha
 
     def run_connect(self, connection_type):
         self.remote_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        # self.remote_socket.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
-        # self.remote_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        self.remote_socket.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+        self.remote_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         # self.remote_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 30)
         # self.remote_socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 4096)
         # self.remote_socket.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 4096)
@@ -165,7 +168,6 @@ class MasterBufferServer:
     def master_interaction_thread(self):
         buffer = self.buffer
 
-        print(0)
         initial_request = struct.unpack("!BH", buffer.read_exact(3)) ## change later
         cmd = initial_request[0];
         print(f"cmd {cmd}")
@@ -173,10 +175,8 @@ class MasterBufferServer:
             print(f" client send invalid command {cmd}")
             self.server_link.teardown_link()
 
-        print(1)
         password_len = initial_request[1]
         password_bytes = buffer.read_exact(password_len)
-        print(2)
 
         announce_data = b"dada"[:65535] # make sure to limit max size;
         announce_len = len(announce_data)
@@ -184,9 +184,8 @@ class MasterBufferServer:
         data = struct.pack("!BH",ACCEPT_AND_ANNC,announce_len)
         buffer.write(data);
         buffer.write(announce_data);
-        print("end of buffer")
 
-        while True:
+        while self.server_link.link != None:
             cmd = struct.unpack("!B", buffer.read_exact(1))[0];
             print(f"cmd {cmd}")
             if cmd == END_CONNECTION:
@@ -197,9 +196,7 @@ class MasterBufferServer:
 
     def __init__(self, server_link ,channel):
         self.server_link = server_link
-        print("a")
-        self.buffer = ReticulumBufferWrapper(channel, 1)
-        print("b")
+        self.buffer = ReticulumBufferWrapper(channel, 0)
         threading.Thread(target=self.master_interaction_thread,args = (), daemon=True).start();
 
     def close_connection_signal(self, id):

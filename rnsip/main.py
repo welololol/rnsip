@@ -99,6 +99,7 @@ def main():
        
     while True:
         time.sleep(1);
+        print(list(threading.enumerate()))
         
 if __name__ == "__main__":
     main()

@@ -16,6 +16,10 @@ class ReticulumBufferWrapper: # Utility class because the reticulum callback thi
         self.held = len
         self.event.set()
 
+    def clear_all_blocking(self):
+        self.event.set()
+        self.held = 1000000000000000000
+
     def read_exact(self, len_data): # weird fix to do make callback work. Reads that specific amount of bytes and waits
         # if there isn't enough bytes then wait (not impl yet but it'll probably be fine)
         while self.held < len_data:
@@ -248,7 +252,7 @@ class BufferTcpExchange():
                 print(f"read {len(data)}")
             else:
                 print("none read")
-                continue
+                break
             try:
                 self.socket.sendall(data)
             except OSError as e: #if we can't send to socket, it's cooked then return.
@@ -279,6 +283,7 @@ class BufferTcpExchange():
     # if the other side told us to close or something happened locally
     def teardown_socket(self):
         print(f" end socket {self.wrapped_buffer.id}")
+        self.wrapped_buffer.clear_all_blocking()
         try:
             self.socket.shutdown(socket.SHUT_RDWR)
         except OSError: # shutting down a socket that is closed gives us this so.

@@ -23,14 +23,15 @@ class Client:
     def closed_link(self, link):
         current_link = self.client_link # 90% sure it'll be the same ones as we close unless the code has really fucked up
         print(f"link has been broken {link} {current_link}")
-        current_link.teardown()
+        if current_link:
+            current_link.teardown()
 
         print("attempting reconnect")
         self.attempt_connection()
 
 class ClientLink:
     def __init__(self, link):
-        self.id_rolling = 1;
+        self.id_rolling = 0;
         self.connection_lock = threading.Lock()
         self.link = link
         self.connections = {}
@@ -54,7 +55,7 @@ class ClientLink:
     def close_connection_local(self,id):
         self.connection_lock.acquire()
         connection = self.connections.get(id)
-        if connection:
+        if connection != None:
             connection.teardown(internal=False)
             del self.connections[id];
         else:
@@ -72,7 +73,6 @@ class ClientLink:
 class MasterBufferClient:
     def master_interaction_thread(self):
 
-        print("master 1")
         self.wrapper_buffer.write(bytes([AUTH_PASS,0x00,0x00])) ## should be a password thing here later. But this is basically saying no pass
 
         a = self.wrapper_buffer.read_exact(3)
@@ -82,11 +82,9 @@ class MasterBufferClient:
             print("shit has hit the fan")
             pass
 
-        print("master 2")
         announce_len  = announce_cmd_return[1]
         announce_data = self.wrapper_buffer.read_exact(announce_len)
 
-        print("master 3")
         # by this point, the connection has be initialised.
         # the only thing the client needs to listen for is the server tearing down a connection
         # the only thing the server is listening for, is the client creating connections and also tearing them down
@@ -110,7 +108,7 @@ class MasterBufferClient:
 
 
     def __init__(self, client_link , channel):
-        self.wrapper_buffer = ReticulumBufferWrapper(channel, 1)
+        self.wrapper_buffer = ReticulumBufferWrapper(channel, 0)
         self.client_link = client_link
 
         threading.Thread(target=self.master_interaction_thread,args = (), daemon=True).start();
@@ -118,7 +116,6 @@ class MasterBufferClient:
     def close_connection(self, id):
         new_connection = struct.pack("!BI", END_CONNECTION, id); 
         self.wrapper_buffer.write(new_connection)
-        self.wrapper_buffer.flush()
 
 class SocksClientConnection:
     def handshake(self, connection_type=None):
@@ -168,14 +165,6 @@ class SocksClientConnection:
         if internal == True:
             self.client_link.close_connection_remote(self.buffer_wrapper.id)
 
-    def flush_initial(self):
-        # occasionally we will send data to the remote.exchange_buffer
-        # before it has actually initialised, which causes problems
-        # so we just keep flushing the bytes till it works out
-        self.buffer_wrapper.flush();
-        for i in range(1,25):
-            time.sleep(0.01)
-            self.buffer_wrapper.flush();
 
     
     def __init__(self,tcp_socket, client_link, buffer_id, connection_type=None):
@@ -185,6 +174,5 @@ class SocksClientConnection:
         self.finished_handshake = False
 
         self.tcp_socket.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
-        threading.Thread(target=self.flush_initial,args = (), daemon=True).start();
         threading.Thread(target=self.handshake,args = (), kwargs={"connection_type":connection_type}, daemon=True).start();
 
