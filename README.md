@@ -19,6 +19,8 @@ Two parts to this one:
 
 ## Usage
 
+The lowest I've been able to load websites is about 10kb/s (and that's after waiting a while), with lowest being about 2kb/s before most services disconnect before more than a few packets go through
+
 ## Techincal Detail
 
 For simplicity's sake, reticulum-ip attempts to use socksv5 as the backend as much as possible. The port forwarding system works similarly to socksv5

@@ -72,6 +72,7 @@ class ServerLink: # This is the per client/link connection
         print(self.connections)
         for connection in self.connections.values():
             connection.teardown(internal=False)
+        self.master_buffer.teardown();
         self.link = None
 
     def buffer_of_connections(self, latest_buffer_id):
@@ -102,6 +103,8 @@ class Connection: ## an individual tcp or udp connection (not really udp but tha
         
     def handshake(self):
         connection_type = ConnectionType.read_buf(self.buffer.read_exact)
+        if self.torndown:
+            return
         self.server_link.buffer_of_connections(self.buffer.id)
         print(f"[{self.server_link.link_id}] [{self.buffer.id}] from request connection has been formed to {str(connection_type)}")
         new_address, connection_speed = filtering.filter_ip_based_on_settings(connection_type, self.server_link.server.settings)
@@ -124,6 +127,8 @@ class Connection: ## an individual tcp or udp connection (not really udp but tha
     def teardown(self, internal=True):
         # if internal then propagate upwards to clientlink so that the other side knows, if not just delete
         print(f"[{self.server_link.link_id}] [{self.buffer.id}] is being torn-down {internal}")
+        self.torndown = True;
+        self.buffer.clear_all_blocking()
         if self.finished_handshake:
             self.buffer_exchange.teardown_socket()
         else:
@@ -131,10 +136,8 @@ class Connection: ## an individual tcp or udp connection (not really udp but tha
 
             if self.remote_socket: # assuming we ever even started the socket
                 self.remote_socket.close()
-            self.buffer.clear_all_blocking()
         if internal == True:
             self.server_link.close_connection_remote(self.buffer_exchange.wrapped_buffer.id)
-        self.torndown = True;
 
 
     def get_connection_type():
@@ -193,6 +196,10 @@ class MasterBufferServer:
                 threading.Thread(target=self.server_link.close_connection_local,args = (connection_id,), daemon=True).start();
             else:
                 pass
+
+    def teardown(self):
+        self.buffer.clear_all_blocking()
+
 
     def __init__(self, server_link ,channel):
         self.server_link = server_link
