@@ -41,9 +41,9 @@ class ReticulumBufferWrapper: # Utility class because the reticulum callback thi
         while self.held == 0:
             self.event.wait()
             self.event.clear()
+            if self.broken:
+                return None;
 
-        if self.broken:
-            return None;
 
         data = self.buffer.read(len_data)
         if data == None:
